@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon %}
+{% block title %}קבלה {{ r.no }}{% endblock %}
+{% block content %}
+{% if new %}
+<div class="banner ok">{{ icon("check") }}התשלום נרשם וקבלה {{ r.no }} הופקה. שלח אותה לדייר.</div>
+{% endif %}
+
+<div class="page-head">
+  <div>
+    <p class="eyebrow"><a href="/receipts">קבלות</a></p>
+    <h1>קבלה {{ r.no }}</h1>
+  </div>
+  {% if r.voided_at %}<span class="chip void">{{ icon("x", "i-sm") }}מבוטלת</span>{% endif %}
+</div>
+
+<div class="receipt-layout">
+  <article class="paper">
+    <div class="paper-head">
+      <div>
+        <h2>{{ s.building_name }}</h2>
+        {% if s.building_address %}<p>{{ s.building_address }}</p>{% endif %}
+      </div>
+      <div class="paper-no"><span>קבלה מס׳</span><b class="num">{{ r.no }}</b></div>
+    </div>
+    <hr>
+    <dl>
+      <dt>תאריך</dt><dd class="num">{{ r.issued_at | date_he }}</dd>
+      <dt>התקבל מאת</dt><dd>{{ r.payer or "—" }}</dd>
+      <dt>דירה</dt><dd>{{ r.apt_id }}</dd>
+      <dt>עבור</dt><dd>דמי ועד בית, {{ r.period | period_he }}</dd>
+      <dt>אמצעי תשלום</dt>
+      <dd>{{ METHOD_HE[r.method] }}{% if r.cheque_no %} מס׳ {{ r.cheque_no }}{% endif %}{% if r.cheque_due %}, לפירעון {{ r.cheque_due | date_he }}{% endif %}</dd>
+      {% if r.note %}<dt>הערה</dt><dd>{{ r.note }}</dd>{% endif %}
+    </dl>
+    <div class="total"><span>סכום</span><b class="num">₪{{ r.amount | money }}</b></div>
+    <div class="paper-foot">
+      <span>{% if s.treasurer_name %}גזבר: {{ s.treasurer_name }}{% endif %}</span>
+      <span>הופק במערכת ועד הבית</span>
+    </div>
+    {% if r.voided_at %}<div class="stamp">מבוטלת</div>{% endif %}
+  </article>
+
+  <aside class="side">
+    <div class="card stack">
+      <button type="button" class="btn wa lg block" data-share
+              data-pdf="/receipts/{{ r.no }}/pdf" data-name="receipt-{{ r.no }}.pdf"
+              data-text="{{ text }}" data-phone="{{ phone }}">{{ icon("chat") }}שליחה בוואטסאפ</button>
+      <a class="btn block" href="/receipts/{{ r.no }}/pdf" target="_blank">{{ icon("print") }}הדפסה / PDF</a>
+      {% if phone %}
+        <p class="hint">ישלח ל{{ r.payer or "דירה " ~ r.apt_id }}. בטלפון נפתח חלון שיתוף — בחר וואטסאפ.</p>
+      {% else %}
+        <p class="hint">אין טלפון לדירה {{ r.apt_id }}. <a href="/apartments#apt-{{ r.apt_id }}">הוספה</a></p>
+      {% endif %}
+    </div>
+    {% if r.voided_at %}
+      <div class="banner err">{{ icon("alert") }}בוטלה {{ r.voided_at | date_he }}: {{ r.void_reason }}</div>
+    {% else %}
+      <details class="card danger-zone">
+        <summary>ביטול הקבלה</summary>
+        <form method="post" action="/receipts/{{ r.no }}/void" class="stack" data-confirm="לבטל את קבלה {{ r.no }}? המספר לא יחזור לשימוש.">
+          <label class="field"><span>סיבה</span><input name="reason" required></label>
+          <button class="btn danger">ביטול קבלה {{ r.no }}</button>
+        </form>
+      </details>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

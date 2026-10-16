@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, apt_name %}
+{% block title %}דירות{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><p class="eyebrow">{{ apartments | length }} דירות</p><h1>דירות</h1></div>
+</div>
+<p class="hint" style="margin-bottom: 16px">יתרת פתיחה: חוב שהיה לדירה לפני תחילת השימוש במערכת. מספר שלילי = זכות לדירה.</p>
+<div class="apt-grid">
+{% for a in apartments %}
+  <form method="post" action="/apartments/{{ a.id }}" class="card apt-card" id="apt-{{ a.id }}">
+    <div class="card-head">
+      <span class="apt-no">{{ a.id }}</span>
+      <div class="list-main"><b>{{ apt_name(a) }}</b><small>{{ METHOD_SHORT[a.default_method] }} · ₪{{ a.monthly_fee | money }} לחודש</small></div>
+    </div>
+    <div class="fields">
+      <label class="field"><span>גר בדירה</span><input name="occupant" value="{{ a.occupant }}" autocomplete="off"></label>
+      <label class="field"><span>בעלים</span><input name="owner" value="{{ a.owner }}" autocomplete="off"></label>
+      <label class="field"><span>טלפון (וואטסאפ)</span><input name="phone" type="tel" dir="ltr" value="{{ a.phone }}" placeholder="050-0000000"></label>
+      <label class="field"><span>דמי ועד ₪</span><input name="monthly_fee" inputmode="decimal" value="{{ a.monthly_fee | money }}" required></label>
+      <label class="field"><span>אמצעי תשלום רגיל</span>
+        <select name="default_method">
+          {% for key, label in METHOD_HE.items() %}<option value="{{ key }}" {{ "selected" if key == a.default_method }}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field"><span>יתרת פתיחה ₪</span><input name="opening" inputmode="decimal" value="{{ opening.get(a.id, 0) | money }}"></label>
+    </div>
+    <div class="form-actions"><button class="btn primary small">{{ icon("check", "i-sm") }}שמירה</button></div>
+  </form>
+{% endfor %}
+</div>
+{% endblock %}

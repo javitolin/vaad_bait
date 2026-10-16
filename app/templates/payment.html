@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, apt_name %}
+{% block title %}רישום תשלום{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow"><a href="/grid">תשלומים</a></p>
+    <h1>רישום תשלום</h1>
+  </div>
+</div>
+
+<form method="post" action="/payments" class="card stack" style="max-width: 640px">
+  <div class="fields">
+    <label class="field"><span>דירה</span>
+      <select name="apt_id" data-apartment>
+        {% for a in apartments %}<option value="{{ a.id }}" data-fee="{{ a.monthly_fee | money }}" data-method="{{ a.default_method }}" {{ "selected" if a.id == apt.id }}>{{ a.id }} · {{ apt_name(a) }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field"><span>עבור חודש</span>
+      <input type="month" name="period" value="{{ period }}" required>
+    </label>
+  </div>
+
+  <label class="field"><span>סכום</span>
+    <div class="money-input"><input name="amount" inputmode="decimal" value="{{ apt.monthly_fee | money }}" required></div>
+  </label>
+
+  <div class="field">
+    <span class="field-label">אמצעי תשלום</span>
+    <div class="segmented" data-toggles>
+      {% for key, label in METHOD_HE.items() %}
+        <input type="radio" name="method" id="m-{{ key }}" value="{{ key }}" {{ "checked" if key == apt.default_method }}>
+        <label for="m-{{ key }}">{{ label }}</label>
+      {% endfor %}
+    </div>
+    {% if apt.default_method == "offset" %}<p class="hint">קיזוז: דמי הוועד מקוזזים מהחוב של הוועד אליך.</p>{% endif %}
+  </div>
+
+  <div class="subpanel" data-show-for="cheque">
+    <div class="fields">
+      <label class="field"><span>מספר צ׳ק</span><input name="cheque_no" inputmode="numeric"></label>
+      <label class="field"><span>תאריך פירעון</span><input type="date" name="cheque_due"></label>
+    </div>
+    <label class="switch"><input type="checkbox" name="deposited" value="1" checked> הצ׳ק הופקד — להפיק קבלה עכשיו</label>
+  </div>
+
+  <div class="fields">
+    <label class="field"><span>תאריך</span><input type="date" name="paid_on" value="{{ today }}" required></label>
+    <label class="field"><span>הערה <small>(לא חובה)</small></span><input name="note"></label>
+  </div>
+
+  <div class="form-actions">
+    <a class="btn" href="/grid">ביטול</a>
+    <button class="btn primary lg">{{ icon("receipt") }}שמירה והפקת קבלה</button>
+  </div>
+</form>
+{% endblock %}

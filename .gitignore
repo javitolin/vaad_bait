@@ -1,0 +1,31 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+tf.plan
+crash.log
+terraform.tfvars
+terraform/backend.hcl
+terraform/modules/app/.build/
+
+# Secrets / personal config — never commit
+*.pem
+.env
+.env.*
+config.env
+
+# Build artifacts
+layers/build/
+layers/*.zip
+
+# Local data: residents' details and receipts
+.devdata/
+backups/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+.DS_Store

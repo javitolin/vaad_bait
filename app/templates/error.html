@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon %}
+{% block title %}לא נשמר{% endblock %}
+{% block content %}
+<section class="card stack" style="max-width: 560px; margin: 40px auto; text-align: center">
+  <div style="color: var(--owed)">{{ icon("alert") }}</div>
+  <h1>לא נשמר</h1>
+  <p>{{ message }}</p>
+  <div><a class="btn" href="javascript:history.back()">חזרה</a></div>
+</section>
+{% endblock %}

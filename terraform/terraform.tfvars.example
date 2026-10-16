@@ -1,0 +1,4 @@
+bucket_name           = "my-vaad-bucket"
+domain_name           = "vaad.example.com"
+cognito_domain_prefix = "my-vaad"
+budget_email          = ""

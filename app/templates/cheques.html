@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, apt_name %}
+{% block title %}צ׳קים{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><p class="eyebrow">{{ held | length }} בהמתנה</p><h1>צ׳קים</h1></div>
+</div>
+
+{% if due %}
+<form method="post" action="/cheques/deposit-due" class="banner warn" data-confirm="להפקיד {{ due }} צ׳קים ולהפיק קבלות?">
+  {{ icon("clock") }}<span>{{ due }} צ׳קים הגיע מועד פירעונם</span>
+  <button class="btn primary small">הפקדה והפקת קבלות</button>
+</form>
+{% endif %}
+
+<section class="card flush">
+  <div class="card-head"><h2>ממתינים להפקדה</h2></div>
+  {% if held %}
+  <ul class="list" style="margin-top: 8px">
+    {% for c in held %}
+    {% set d = c.cheque_due %}
+    <li class="{{ 'due' if d and d <= today }}">
+      <span class="date-badge">
+        {% if d %}<b>{{ d[8:10] | int }}</b><small>{{ MONTHS_HE[d[5:7] | int - 1][:3] }} {{ d[2:4] }}</small>{% else %}<b>—</b>{% endif %}
+      </span>
+      <div class="list-main">
+        <b>{{ c.apt_id }} · {{ c.payer or "דירה " ~ c.apt_id }}</b>
+        <small>צ׳ק {{ c.cheque_no }} · עבור {{ c.period | period_he }}</small>
+      </div>
+      <div class="list-end">
+        <span class="amount num">₪{{ c.amount | money }}</span>
+        <form method="post" action="/cheques/{{ c.id }}/clear"><button class="btn small" title="הופקד">{{ icon("check", "i-sm") }}הופקד</button></form>
+        <form method="post" action="/cheques/{{ c.id }}/bounce" data-confirm="לסמן את צ׳ק {{ c.cheque_no }} כחוזר?"><button class="btn small danger" title="חזר">{{ icon("x", "i-sm") }}חזר</button></form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">{{ icon("cheque") }}<p>אין צ׳קים ממתינים.</p></div>
+  {% endif %}
+</section>
+
+<form method="post" action="/cheques/series" class="card stack">
+  <div class="card-head" style="margin: 0"><h2>הוספת סדרת צ׳קים</h2></div>
+  <p class="hint">צ׳קים דחויים לשנה בבת אחת: כל צ׳ק הבא מקבל מספר, פירעון וחודש עוקבים.</p>
+  <div class="fields">
+    <label class="field"><span>דירה</span>
+      <select name="apt_id">{% for a in apartments %}<option value="{{ a.id }}">{{ a.id }} · {{ apt_name(a) }}</option>{% endfor %}</select>
+    </label>
+    <label class="field"><span>מספר הצ׳ק הראשון</span><input name="first_no" inputmode="numeric" required></label>
+    <label class="field"><span>כמה צ׳קים</span><input type="number" name="count" min="1" max="24" value="12" required></label>
+    <label class="field"><span>סכום כל צ׳ק</span><div class="money-input"><input name="amount" inputmode="decimal" value="250.00" required style="font-size: 1rem; padding-block: 11px"></div></label>
+    <label class="field"><span>פירעון הצ׳ק הראשון</span><input type="date" name="first_due" value="{{ today }}" required></label>
+    <label class="field"><span>הצ׳ק הראשון עבור</span><input type="month" name="first_period" value="{{ period }}" required></label>
+  </div>
+  <div class="form-actions"><button class="btn primary">{{ icon("plus") }}הוספת הסדרה</button></div>
+</form>
+{% endblock %}

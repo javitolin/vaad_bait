@@ -1,0 +1,12 @@
+# Runtime dependencies, packaged into the Lambda layer by layers/build.sh.
+# boto3 ships with the Lambda runtime; tzdata because the runtime image is not
+# guaranteed to have a timezone database for zoneinfo.
+fastapi
+mangum
+jinja2
+python-multipart
+fpdf2
+uharfbuzz
+PyJWT
+cryptography
+tzdata

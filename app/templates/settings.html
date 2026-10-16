@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon %}
+{% block title %}הגדרות{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>הגדרות</h1></div></div>
+
+<form method="post" action="/settings" style="max-width: 720px">
+  <section class="card stack">
+    <h2>פרטי הבניין</h2>
+    <p class="hint">מופיעים בראש כל קבלה.</p>
+    <div class="fields">
+      <label class="field"><span>שם</span><input name="building_name" value="{{ s.building_name }}" required></label>
+      <label class="field"><span>כתובת</span><input name="building_address" value="{{ s.building_address }}"></label>
+      <label class="field"><span>שם הגזבר</span><input name="treasurer_name" value="{{ s.treasurer_name }}"></label>
+    </div>
+  </section>
+
+  <section class="card stack">
+    <h2>חיובים</h2>
+    <label class="field" style="max-width: 280px"><span>חיוב דמי ועד החל מחודש</span>
+      <input type="month" name="start_period" value="{{ s.start_period }}" required>
+    </label>
+    <p class="hint">מכאן והלאה כל דירה מחויבת אוטומטית בתחילת כל חודש לפי דמי הוועד שלה.</p>
+  </section>
+
+  <section class="card stack">
+    <h2>הודעת וואטסאפ עם קבלה</h2>
+    <textarea name="wa_receipt" rows="4" required>{{ s.wa_receipt }}</textarea>
+    <div class="placeholders">
+      <code>{name}</code><code>{apt}</code><code>{amount}</code><code>{period}</code><code>{receipt_no}</code>
+    </div>
+    <p class="hint">שם הדייר, מספר דירה, סכום, חודש ומספר קבלה — יוחלפו בערכים האמיתיים.</p>
+  </section>
+
+  <div class="form-actions" style="justify-content: space-between">
+    <a class="btn" href="/auth/logout">{{ icon("logout") }}יציאה</a>
+    <button class="btn primary lg">{{ icon("check") }}שמירת ההגדרות</button>
+  </div>
+</form>
+{% endblock %}

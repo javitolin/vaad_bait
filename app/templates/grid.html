@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, apt_name, status_chip %}
+{% block title %}תשלומים {{ year }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">{{ month_he }} {{ current[:4] }}</p>
+    <h1>תשלומי ועד</h1>
+  </div>
+  <div class="year-switch" aria-label="שנה">
+    <a href="/grid?year={{ year - 1 }}" aria-label="{{ year - 1 }}">{{ icon("prev") }}</a>
+    <span>{{ year }}</span>
+    <a href="/grid?year={{ year + 1 }}" aria-label="{{ year + 1 }}">{{ icon("next") }}</a>
+  </div>
+</div>
+
+<section class="stats">
+  <div class="stat">
+    <span class="stat-label"><span class="dot"></span>נגבה ב{{ month_he }}</span>
+    <span class="stat-value num">₪{{ collected | shekels }}</span>
+    <span class="stat-sub">{{ paid_count }} מתוך {{ apartments | length }} דירות שילמו</span>
+    <div class="meter"><span style="width: {{ (100 * paid_count / (apartments | length)) | round | int }}%"></span></div>
+  </div>
+  <div class="stat owed">
+    <span class="stat-label"><span class="dot"></span>חוב פתוח</span>
+    <span class="stat-value num">₪{{ owed_total | shekels }}</span>
+    <span class="stat-sub">{{ owed_count }} דירות</span>
+  </div>
+  <a class="stat held" href="/cheques" style="color: inherit">
+    <span class="stat-label"><span class="dot"></span>צ׳קים בהמתנה</span>
+    <span class="stat-value num">{{ held_count }}</span>
+    <span class="stat-sub">₪{{ held_total | shekels }}{% if due %} · <b style="color: var(--held)">{{ due }} להפקדה</b>{% endif %}</span>
+  </a>
+</section>
+
+{% if year == current[:4] | int %}
+<section class="card flush">
+  <div class="card-head">
+    <h2>{{ month_he }}</h2>
+    <span class="muted">{{ paid_count }}/{{ apartments | length }} שילמו</span>
+  </div>
+  <ul class="list cols" style="margin-top: 8px">
+    {% for a in apartments %}
+    {% set c = cells.get((a.id, current)) %}
+    <li>
+      <span class="apt-no">{{ a.id }}</span>
+      <div class="list-main">
+        <b>{{ apt_name(a) }}</b>
+        <small>{{ METHOD_SHORT[a.default_method] }} · ₪{{ a.monthly_fee | money }}</small>
+      </div>
+      <div class="list-end">
+        {{ status_chip(c) }}
+        {% if c and c.status == "paid" and c.receipt %}
+          <a class="btn small" href="/receipts/{{ c.receipt }}">{{ icon("receipt", "i-sm") }}קבלה {{ c.receipt }}</a>
+        {% elif c and c.status == "paid" %}
+          <span class="muted" style="font-size: 0.8rem">קבלה ידנית</span>
+        {% elif c and c.status == "held" %}
+          <a class="btn small" href="/cheques">לצ׳קים</a>
+        {% elif not c or c.status != "paid" %}
+          <a class="btn small primary" href="/payments/new?apt={{ a.id }}&period={{ current }}">{{ icon("plus", "i-sm") }}רישום</a>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="card flush">
+  <div class="card-head"><h2>כל השנה</h2><span class="muted">לחיצה על חודש רושמת תשלום</span></div>
+  <div class="matrix-wrap">
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th class="who">דירה</th>
+          {% for p in periods %}<th class="{{ 'now' if p == current }}">{{ MONTHS_HE[loop.index0][:3] }}</th>{% endfor %}
+          <th class="bal">יתרה</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for a in apartments %}
+        <tr>
+          <th class="who">{{ a.id }}<small>{{ a.occupant or a.owner }}</small></th>
+          {% for p in periods %}
+            {% set c = cells.get((a.id, p)) %}
+            {% set add = "/payments/new?apt=" ~ a.id ~ "&period=" ~ p %}
+            <td class="{{ 'now' if p == current }}">
+            {% if c and c.status == "paid" %}
+              {% if c.receipt %}<a class="dot-cell paid" href="/receipts/{{ c.receipt }}" title="שולם · {{ METHOD_SHORT[c.method] }} · קבלה {{ c.receipt }}">{{ icon("check", "i-sm") }}</a>
+              {% else %}<span class="dot-cell paid" title="שולם · {{ METHOD_SHORT[c.method] }} · קבלה ידנית">{{ icon("check", "i-sm") }}</span>{% endif %}
+            {% elif c and c.status == "held" %}
+              <a class="dot-cell held" href="/cheques" title="צ׳ק ממתין">{{ icon("clock", "i-sm") }}</a>
+            {% elif c and c.status in ("owed", "partial") %}
+              <a class="dot-cell {{ c.status }}" href="{{ add }}" title="{{ 'צ׳ק חזר' if c.bounced else 'טרם שולם' }}">{{ icon("x" if c.bounced else "alert", "i-sm") }}</a>
+            {% else %}
+              <a class="dot-cell none" href="{{ add }}" aria-label="רישום תשלום"></a>
+            {% endif %}
+            </td>
+          {% endfor %}
+          <td class="bal num {{ 'owed' if balances[a.id] > 0 }}">{{ balances[a.id] | money }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="legend">
+    <span><i style="background: var(--paid-soft)"></i>שולם</span>
+    <span><i style="background: var(--held-soft)"></i>צ׳ק ממתין</span>
+    <span><i style="background: var(--owed-soft)"></i>טרם שולם</span>
+    <span>יתרה חיובית = הדירה חייבת</span>
+  </div>
+</section>
+{% endblock %}

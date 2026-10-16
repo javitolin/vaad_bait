@@ -1,0 +1,15 @@
+{% macro icon(name, cls="") -%}
+<svg class="i {{ cls }}" aria-hidden="true"><use href="#i-{{ name }}"/></svg>
+{%- endmacro %}
+
+{% macro apt_name(a) -%}
+{{ a.occupant or a.owner or "דירה " ~ a.id }}
+{%- endmacro %}
+
+{% macro status_chip(c) -%}
+{% if c and c.status == "paid" %}<span class="chip paid">{{ icon("check", "i-sm") }}שולם</span>
+{% elif c and c.status == "held" %}<span class="chip held">{{ icon("clock", "i-sm") }}צ׳ק ממתין</span>
+{% elif c and c.status == "partial" %}<span class="chip partial">שולם חלקית</span>
+{% elif c and c.status == "owed" %}<span class="chip owed">{{ "צ׳ק חזר" if c.bounced else "טרם שולם" }}</span>
+{% else %}<span class="chip">—</span>{% endif %}
+{%- endmacro %}
