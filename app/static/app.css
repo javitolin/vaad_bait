@@ -58,6 +58,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -265,11 +266,14 @@ input[dir="ltr"] { text-align: right; }
 .list-end { display: flex; align-items: center; gap: 10px; }
 .list .amount { font-weight: 600; }
 .list a.rowlink { color: inherit; display: contents; }
+/* Two columns that read down, then across: 1-6 on the right, 7-12 on the left. */
 @media (min-width: 900px) {
-  .list.cols { display: grid; grid-template-columns: 1fr 1fr; }
-  .list.cols > li:nth-child(2) { border-top: none; }
-  .list.cols > li:nth-child(odd) { border-inline-end: 1px solid var(--border); }
+  .list.cols { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(var(--rows), auto); grid-auto-flow: column; }
+  .list.cols > li.top { border-top: none; }
+  .list.cols > li.c1 { border-inline-end: 1px solid var(--border); }
 }
+.tap { cursor: pointer; transition: background 0.12s; }
+.tap:hover { background: var(--surface-2); }
 .list li.void { opacity: 0.6; }
 .list li.void .amount { text-decoration: line-through; }
 @media (max-width: 520px) {
@@ -292,14 +296,17 @@ input[dir="ltr"] { text-align: right; }
 .matrix td.now { background: color-mix(in srgb, var(--brand) 6%, transparent); }
 .matrix td.bal { padding-inline: 12px 20px; text-align: end; font-weight: 600; }
 .matrix td.bal.owed { color: var(--owed); }
+.matrix td.bal.credit { color: var(--paid); }
 .dot-cell {
-  display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
-  color: var(--muted); transition: transform 0.1s;
+  display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 9px;
+  color: var(--muted); transition: transform 0.1s; border: none; padding: 0; background: transparent; cursor: pointer;
 }
-a.dot-cell:hover { transform: scale(1.12); }
+.dot-cell:hover { transform: scale(1.12); }
+.dot-cell.received { background: var(--held-soft); color: var(--held); }
+.dot-cell.missing { background: var(--owed-soft); color: var(--owed); }
 .dot-cell.paid { background: var(--paid-soft); color: var(--paid); }
 .dot-cell.held { background: var(--held-soft); color: var(--held); }
-.dot-cell.owed, .dot-cell.partial { background: var(--owed-soft); color: var(--owed); }
+.dot-cell.partial { background: var(--owed-soft); color: var(--owed); }
 .dot-cell.none::after { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--border); }
 .dot-cell.none:hover::after { display: none; }
 .dot-cell.none:hover::before { content: "+"; font-size: 1rem; color: var(--brand); }
@@ -362,3 +369,39 @@ li.due .date-badge small { color: var(--held); }
 .apt-card .fields { grid-template-columns: 1fr 1fr; gap: 12px; }
 .apt-card .fields .wide { grid-column: 1 / -1; }
 .apt-card input, .apt-card select { padding: 9px 11px; }
+
+/* ---- the cell sheet ------------------------------------------------------------ */
+
+.sheet {
+  border: none; border-radius: 20px; padding: 20px; width: min(460px, calc(100vw - 32px));
+  background: var(--surface); color: var(--text); box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+}
+.sheet::backdrop { background: rgba(8, 16, 24, 0.45); backdrop-filter: blur(2px); }
+@media (max-width: 760px) {
+  .sheet {
+    width: 100%; max-width: none; margin: auto 0 0; border-radius: 20px 20px 0 0;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+}
+.sheet-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+.sheet-head form { margin: 0; }
+.sheet .row form { margin: 0; }
+.icon-btn {
+  display: grid; place-items: center; width: 36px; height: 36px; border: none; border-radius: 10px;
+  background: var(--surface-2); color: var(--text-2); cursor: pointer;
+}
+.icon-btn:hover { color: var(--text); }
+.method-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+@media (max-width: 420px) { .method-pick { grid-template-columns: repeat(3, 1fr); } }
+.method-btn {
+  display: grid; justify-items: center; gap: 6px; padding: 14px 4px; border-radius: 14px;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  font: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.method-btn .i { width: 24px; height: 24px; }
+.method-btn:hover { border-color: var(--brand); }
+.method-btn.suggested { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-strong); }
+.inline-add { display: flex; gap: 8px; align-items: center; margin: 0; }
+.inline-add input { width: 150px; padding: 8px 11px; }
+.list-end form { margin: 0; }
+.list-end .inline-add input { width: 120px; }

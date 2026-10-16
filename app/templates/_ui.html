@@ -7,9 +7,19 @@
 {%- endmacro %}
 
 {% macro status_chip(c) -%}
-{% if c and c.status == "paid" %}<span class="chip paid">{{ icon("check", "i-sm") }}שולם</span>
-{% elif c and c.status == "held" %}<span class="chip held">{{ icon("clock", "i-sm") }}צ׳ק ממתין</span>
+{% if c and c.status == "paid" %}<span class="chip paid">{{ icon("m-" ~ c.method, "i-sm") }}{{ METHOD_SHORT[c.method] }} · שולם</span>
+{% elif c and c.status == "received" %}<span class="chip held">{{ icon("m-" ~ c.method, "i-sm") }}{{ METHOD_SHORT[c.method] }} · לטיפול</span>
 {% elif c and c.status == "partial" %}<span class="chip partial">שולם חלקית</span>
-{% elif c and c.status == "owed" %}<span class="chip owed">{{ "צ׳ק חזר" if c.bounced else "טרם שולם" }}</span>
+{% elif c and c.status == "missing" %}<span class="chip owed">{{ "הצ׳ק חזר" if c.bounced else "חסר" }}</span>
 {% else %}<span class="chip">—</span>{% endif %}
+{%- endmacro %}
+
+{# Everything the cell sheet needs to open on this apartment and month. #}
+{% macro cell_data(a, p, c) -%}
+data-cell data-apt="{{ a.id }}" data-name="{{ apt_name(a) }}" data-period="{{ p }}" data-when="{{ p | period_he }}"
+data-pane="{{ 'received' if c and c.held_id else ('paid' if c and c.status in ('paid', 'partial') else 'empty') }}"
+data-payment="{{ c.held_id if c and c.held_id else '' }}" data-method="{{ c.method if c and c.method else '' }}"
+data-method-he="{{ METHOD_HE[c.method] if c and c.method else '' }}" data-cheque="{{ c.cheque_no if c and c.cheque_no else '' }}"
+data-receipt="{{ c.receipt if c and c.receipt else '' }}" data-default="{{ a.default_method }}"
+data-bounced="{{ '1' if c and c.bounced else '' }}"
 {%- endmacro %}

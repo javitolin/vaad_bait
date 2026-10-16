@@ -29,7 +29,9 @@ document.addEventListener("submit", async (event) => {
       return;
     }
     if (response.redirected) {
-      location.href = response.url;
+      // Back to the same page: reload keeps the scroll position while marking a long list.
+      if (response.url === location.href) location.reload();
+      else location.href = response.url;
       return;
     }
     document.open();
@@ -84,3 +86,48 @@ document.addEventListener("change", (event) => {
   if (event.target.matches("select[data-apartment]")) applyApartment(event.target);
 });
 syncToggles();
+
+// One sheet serves every cell: it is filled from the clicked cell's data attributes.
+function openSheet(cell) {
+  const d = cell.dataset;
+  const sheet = document.getElementById("cell-sheet");
+  const flags = {
+    bounced: Boolean(d.bounced),
+    cheque: d.method === "cheque",
+    "no-cheque-no": d.method === "cheque" && !d.cheque,
+    receipt: Boolean(d.receipt),
+    manual: d.pane === "paid" && !d.receipt,
+  };
+  const fill = (template) => template.replace(/\{(\w+)\}/g, (_, key) => encodeURIComponent(d[key] ?? ""));
+  const text = { when: `דירה ${d.apt} · ${d.when}`, name: d.name, "method-he": d.methodHe };
+  sheet.querySelectorAll("[data-f]").forEach((el) => (el.textContent = text[el.dataset.f] ?? ""));
+  sheet.querySelectorAll("[data-pane]").forEach((el) => (el.hidden = el.dataset.pane !== d.pane));
+  sheet.querySelectorAll("[data-show-if]").forEach((el) => (el.hidden = !flags[el.dataset.showIf]));
+  sheet.querySelectorAll("[data-action]").forEach((form) => (form.action = fill(form.dataset.action)));
+  sheet.querySelectorAll("[data-href]").forEach((link) => (link.href = fill(link.dataset.href)));
+  sheet.querySelectorAll("input[name=apt_id]").forEach((input) => (input.value = d.apt));
+  sheet.querySelectorAll("input[name=period]").forEach((input) => (input.value = d.period));
+  sheet.querySelectorAll("input[name=back]").forEach((input) => (input.value = location.pathname + location.search));
+  sheet.querySelectorAll("input[name=cheque_no]").forEach((input) => (input.value = d.cheque || ""));
+  sheet.querySelectorAll("[data-needs-cheque]").forEach((button) => (button.disabled = flags["no-cheque-no"]));
+  sheet.querySelectorAll(".method-btn").forEach((button) => button.classList.toggle("suggested", button.value === d.default));
+  sheet.showModal();
+}
+
+document.addEventListener("click", (event) => {
+  const cell = event.target.closest("[data-cell]");
+  if (cell) openSheet(cell);
+  // A click on the backdrop lands on the dialog element itself, outside its box.
+  if (event.target.matches("dialog.sheet")) {
+    const box = event.target.getBoundingClientRect();
+    const inside = event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
+    if (!inside) event.target.close();
+  }
+});
+document.addEventListener("keydown", (event) => {
+  const cell = event.target.closest("li[data-cell]");
+  if (cell && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    openSheet(cell);
+  }
+});

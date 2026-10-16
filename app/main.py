@@ -62,6 +62,18 @@ def see(path: str) -> RedirectResponse:
     return RedirectResponse(path, status_code=303)
 
 
+def local(path: str, fallback: str) -> str:
+    """Only same-site paths, so a crafted form cannot redirect off the app."""
+    return path if path.startswith("/") and not path.startswith("//") else fallback
+
+
+def receipt_text(settings: dict, r: dict) -> str:
+    return ledger.fill(settings["wa_receipt"], {
+        "name": r["payer"], "apt": r["apt_id"], "amount": ledger.money(r["amount"]),
+        "period": ledger.period_he(r["period"]), "receipt_no": r["no"],
+    })
+
+
 def refresh_dues() -> None:
     through = today().strftime("%Y-%m")
     with store.read() as conn:
@@ -134,20 +146,18 @@ def grid(request: Request, year: int | None = None):
     with store.read() as conn:
         apartments = conn.execute("SELECT * FROM apartments ORDER BY id").fetchall()
         cells = ledger.grid(conn, year, current)
-        balances = ledger.balances(conn)
         this_month = ledger.grid(conn, int(current[:4]), current)
-        held = ledger.held_cheques(conn)
-    month = [this_month.get((a["id"], current)) for a in apartments]
-    owed = [b for b in balances.values() if b > 0]
+        balances = ledger.balances(conn)
+        todo = len(ledger.held_payments(conn))
+    month = [this_month.get((a["id"], current)) or {} for a in apartments]
     return render(
-        request, "grid.html", year=year, apartments=apartments, cells=cells, balances=balances,
-        periods=[f"{year}-{m:02d}" for m in range(1, 13)], current=current,
+        request, "grid.html", year=year, apartments=apartments, cells=cells, this_month=this_month,
+        balances=balances, periods=[f"{year}-{m:02d}" for m in range(1, 13)], current=current,
         month_he=ledger.MONTHS_HE[int(current[5:]) - 1],
-        paid_count=sum(1 for c in month if c and c["status"] == "paid"),
-        collected=sum(c["paid"] for c in month if c),
-        owed_total=sum(owed), owed_count=len(owed),
-        held_count=len(held), held_total=sum(c["amount"] for c in held),
-        due=sum(1 for c in held if c["cheque_due"] and c["cheque_due"] <= today().isoformat()),
+        received=sum(1 for c in month if c.get("status") in ("paid", "received")),
+        missing_apts=[a["id"] for a, c in zip(apartments, month) if c.get("status") in ("missing", "partial")],
+        collected=sum(c.get("paid", 0) for c in month),
+        todo=todo, rows=(len(apartments) + 1) // 2,
     )
 
 
@@ -179,55 +189,67 @@ def create_payment(
             cheque_due=parse_date(cheque_due, "תאריך פירעון") if cheque_due else None,
             deposited=bool(deposited), note=note,
         )
-    return see(f"/receipts/{no}?new=1" if no else "/cheques")
+    return see(f"/receipts/{no}?new=1" if no else "/todo")
 
 
-@app.get("/cheques")
-def cheques(request: Request):
+@app.get("/todo")
+def todo(request: Request):
+    day = today().isoformat()
     with store.read() as conn:
-        held = ledger.held_cheques(conn)
-        apartments = conn.execute("SELECT * FROM apartments ORDER BY id").fetchall()
-    due = sum(1 for c in held if c["cheque_due"] and c["cheque_due"] <= today().isoformat())
-    return render(request, "cheques.html", held=held, due=due, apartments=apartments,
-                  today=today().isoformat(), period=today().strftime("%Y-%m"))
+        held = ledger.held_payments(conn)
+        settings = db.settings(conn)
+        issued = [ledger.receipt(conn, r["no"]) for r in ledger.recent_receipts(conn, 50)
+                  if r["issued_at"][:10] == day and not r["voided_at"]]
+    sent = [{"r": r, "text": receipt_text(settings, r), "phone": ledger.wa_phone(r["phone"])} for r in issued]
+    due = sum(1 for p in held if p["method"] == "cheque" and p["cheque_no"] and (p["cheque_due"] or "") <= day)
+    return render(request, "todo.html", held=held, due=due, issued=sent)
 
 
-@app.post("/cheques/series")
-def cheque_series(
+@app.post("/marks")
+def mark(
     apt_id: Annotated[int, Form()],
-    first_no: Annotated[int, Form()],
-    count: Annotated[int, Form()],
-    amount: Annotated[str, Form()],
-    first_due: Annotated[str, Form()],
-    first_period: Annotated[str, Form()],
+    period: Annotated[str, Form()],
+    method: Annotated[str, Form()],
+    back: Annotated[str, Form()] = "/grid",
 ):
     with store.write() as conn:
-        ledger.add_cheque_series(
-            conn, apt_id=apt_id, first_no=first_no, count=count, amount=ledger.parse_money(amount),
-            first_due=parse_date(first_due, "פירעון ראשון"), first_period=first_period, received_on=today(),
-        )
-    return see("/cheques")
+        ledger.mark(conn, apt_id, period, method, today())
+    return see(local(back, "/grid"))
 
 
-@app.post("/cheques/deposit-due")
-def deposit_due():
+@app.post("/payments/{payment_id}/unmark")
+def unmark(payment_id: int, back: Annotated[str, Form()] = "/grid"):
     with store.write() as conn:
-        ledger.deposit_due(conn, today(), now())
-    return see("/receipts")
+        ledger.unmark(conn, payment_id)
+    return see(local(back, "/grid"))
 
 
-@app.post("/cheques/{payment_id}/clear")
-def clear_cheque(payment_id: int):
+@app.post("/payments/{payment_id}/cheque")
+def cheque_number(payment_id: int, cheque_no: Annotated[str, Form()], back: Annotated[str, Form()] = "/todo"):
     with store.write() as conn:
-        no = ledger.clear_cheque(conn, payment_id, today(), now())
-    return see(f"/receipts/{no}?new=1")
+        ledger.set_cheque_no(conn, payment_id, cheque_no)
+    return see(local(back, "/todo"))
 
 
-@app.post("/cheques/{payment_id}/bounce")
-def bounce_cheque(payment_id: int):
+@app.post("/payments/{payment_id}/clear")
+def clear_payment(payment_id: int, back: Annotated[str, Form()] = "/todo"):
+    with store.write() as conn:
+        ledger.clear_payment(conn, payment_id, today(), now())
+    return see(local(back, "/todo"))
+
+
+@app.post("/payments/{payment_id}/bounce")
+def bounce(payment_id: int, back: Annotated[str, Form()] = "/todo"):
     with store.write() as conn:
         ledger.bounce_cheque(conn, payment_id, now())
-    return see("/cheques")
+    return see(local(back, "/todo"))
+
+
+@app.post("/deposit-due")
+def deposit_due(back: Annotated[str, Form()] = "/todo"):
+    with store.write() as conn:
+        ledger.deposit_due(conn, today(), now())
+    return see(local(back, "/todo"))
 
 
 @app.get("/receipts")
@@ -242,11 +264,8 @@ def receipt(request: Request, no: int, new: bool = False):
     with store.read() as conn:
         r = ledger.receipt(conn, no)
         settings = db.settings(conn)
-    text = ledger.fill(settings["wa_receipt"], {
-        "name": r["payer"], "apt": r["apt_id"], "amount": ledger.money(r["amount"]),
-        "period": ledger.period_he(r["period"]), "receipt_no": r["no"],
-    })
-    return render(request, "receipt.html", r=r, s=settings, new=new, text=text, phone=ledger.wa_phone(r["phone"]))
+    return render(request, "receipt.html", r=r, s=settings, new=new,
+                  text=receipt_text(settings, r), phone=ledger.wa_phone(r["phone"]))
 
 
 @app.get("/receipts/{no}/pdf")

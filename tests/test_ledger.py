@@ -32,7 +32,7 @@ class LedgerTest(unittest.TestCase):
         ledger.update_apartment(self.conn, 1, owner="", occupant="", phone="", monthly_fee=25000,
                                 default_method="cash", opening=10000)
         self.pay()
-        self.pay(method="cheque", cheque_no="7", deposited=False)
+        self.pay(method="cheque", deposited=False)
         # 3 months dues + 100 opening - 250 cash; the held cheque does not count yet.
         self.assertEqual(ledger.balances(self.conn)[1], 75000 + 10000 - 25000)
 
@@ -50,20 +50,37 @@ class LedgerTest(unittest.TestCase):
         with self.assertRaises(sqlite3.IntegrityError):
             self.conn.execute("UPDATE receipts SET payment_id = 99 WHERE no = 1001")
 
-    def test_cheque_series_deposit_and_bounce(self):
-        ledger.add_cheque_series(self.conn, apt_id=4, first_no=100, count=3, amount=25000,
-                                 first_due=date(2026, 12, 31), first_period="2026-12", received_on=date(2026, 11, 1))
-        held = ledger.held_cheques(self.conn)
-        self.assertEqual([c["cheque_no"] for c in held], ["100", "101", "102"])
-        self.assertEqual([c["cheque_due"] for c in held], ["2026-12-31", "2027-01-31", "2027-02-28"])
-        self.assertEqual([c["period"] for c in held], ["2026-12", "2027-01", "2027-02"])
-
-        self.assertEqual(ledger.deposit_due(self.conn, date(2027, 1, 31), NOW), [1000, 1001])
-        ledger.bounce_cheque(self.conn, held[1]["id"], NOW)
-        self.assertEqual(self.conn.execute("SELECT status FROM payments WHERE id = ?", (held[1]["id"],)).fetchone()[0], "bounced")
-        self.assertIsNotNone(ledger.receipt(self.conn, 1001)["voided_at"])
+    def test_mark_then_process_on_the_15th(self):
+        ledger.ensure_dues(self.conn, "2026-11")
+        cheque = ledger.mark(self.conn, 4, "2026-11", "cheque", date(2026, 11, 2))
+        transfer = ledger.mark(self.conn, 5, "2026-11", "transfer", date(2026, 11, 2))
         with self.assertRaises(Invalid):
-            ledger.clear_cheque(self.conn, held[1]["id"], date(2027, 2, 1), NOW)
+            ledger.mark(self.conn, 4, "2026-11", "cash", date(2026, 11, 2))
+        cells = ledger.grid(self.conn, 2026, "2026-11")
+        self.assertEqual((cells[(4, "2026-11")]["status"], cells[(6, "2026-11")]["status"]), ("received", "missing"))
+        # Marked is not paid: no receipt yet, and the balance still owes.
+        self.assertEqual(ledger.balances(self.conn)[4], 25000)
+
+        with self.assertRaises(Invalid):
+            ledger.clear_payment(self.conn, cheque, date(2026, 11, 15), NOW)
+        ledger.set_cheque_no(self.conn, cheque, "3340031")
+        self.assertEqual(ledger.deposit_due(self.conn, date(2026, 11, 15), NOW), [1000])
+        self.assertEqual(ledger.clear_payment(self.conn, transfer, date(2026, 11, 15), NOW), 1001)
+        self.assertEqual(ledger.balances(self.conn)[4], 0)
+        self.assertEqual(ledger.held_payments(self.conn), [])
+
+        ledger.bounce_cheque(self.conn, cheque, NOW)
+        self.assertIsNotNone(ledger.receipt(self.conn, 1000)["voided_at"])
+        self.assertEqual(ledger.grid(self.conn, 2026, "2026-11")[(4, "2026-11")]["status"], "missing")
+
+    def test_unmark_only_before_a_receipt(self):
+        held = ledger.mark(self.conn, 1, "2026-11", "cash", date(2026, 11, 2))
+        ledger.unmark(self.conn, held)
+        self.assertEqual(ledger.held_payments(self.conn), [])
+        paid = ledger.mark(self.conn, 1, "2026-11", "cash", date(2026, 11, 2))
+        ledger.clear_payment(self.conn, paid, date(2026, 11, 2), NOW)
+        with self.assertRaises(Invalid):
+            ledger.unmark(self.conn, paid)
 
     def test_account_follows_method(self):
         self.pay(method="offset")
@@ -78,18 +95,45 @@ class LedgerTest(unittest.TestCase):
         ledger.ensure_dues(self.conn, "2026-12")
         self.pay(apt=1)
         self.pay(apt=2, amount=10000)
-        self.pay(apt=3, method="cheque", cheque_no="5", deposited=False)
+        self.pay(apt=3, method="cheque", deposited=False)
         cells = ledger.grid(self.conn, 2026, "2026-12")
         self.assertEqual(cells[(1, "2026-11")]["status"], "paid")
         self.assertEqual(cells[(2, "2026-11")]["status"], "partial")
-        self.assertEqual(cells[(3, "2026-11")]["status"], "held")
-        self.assertEqual(cells[(4, "2026-12")]["status"], "owed")
+        self.assertEqual(cells[(3, "2026-11")]["status"], "received")
+        self.assertEqual(cells[(4, "2026-12")]["status"], "missing")
 
     def test_rejects_bad_input(self):
+        # A deposited cheque needs its number.
         for kwargs in ({"amount": 0}, {"method": "gold"}, {"period": "2026-13"}, {"apt": 99},
                        {"method": "cheque"}):
             with self.subTest(kwargs), self.assertRaises(Invalid):
                 self.pay(**kwargs)
+
+
+class MigrationTest(unittest.TestCase):
+    def test_old_database_is_rebuilt_without_losing_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "old.sqlite")
+            old = sqlite3.connect(path)
+            old.executescript(db.SCHEMA.replace(db.PAYMENTS, """
+                CREATE TABLE payments (id INTEGER PRIMARY KEY, apt_id INTEGER NOT NULL, date TEXT NOT NULL,
+                  amount INTEGER NOT NULL, method TEXT NOT NULL, account TEXT NOT NULL, period TEXT NOT NULL,
+                  cheque_no TEXT CHECK ((method = 'cheque') = (cheque_no IS NOT NULL)), cheque_due TEXT,
+                  status TEXT NOT NULL, note TEXT NOT NULL DEFAULT '');"""))
+            old.execute("INSERT INTO apartments (id, monthly_fee) VALUES (1, 25000)")
+            old.execute("INSERT INTO payments VALUES (1, 1, '2026-11-01', 25000, 'cheque', 'bank', '2026-11', '—', '2026-11-01', 'held', '')")
+            old.execute("INSERT INTO payments VALUES (2, 1, '2026-10-01', 25000, 'cheque', 'bank', '2026-10', '77', NULL, 'cleared', '')")
+            old.execute("INSERT INTO receipts VALUES (1000, 2, 'k', '2026-10-01', NULL, NULL)")
+            old.commit()
+            old.close()
+
+            conn = db.connect(path)
+            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], len(db.MIGRATIONS))
+            self.assertEqual([tuple(r) for r in conn.execute("SELECT id, cheque_no FROM payments ORDER BY id")],
+                             [(1, None), (2, "77")])
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+            ledger.mark(conn, 1, "2026-12", "transfer", date(2026, 12, 1))
+            conn.close()
 
 
 class FormatTest(unittest.TestCase):

@@ -1,6 +1,26 @@
 import sqlite3
 from datetime import date
 
+PAYMENTS = """
+CREATE TABLE IF NOT EXISTS payments (
+  id         INTEGER PRIMARY KEY,
+  apt_id     INTEGER NOT NULL REFERENCES apartments(id),
+  date       TEXT NOT NULL,
+  amount     INTEGER NOT NULL CHECK (amount > 0),
+  method     TEXT NOT NULL CHECK (method IN ('transfer','cheque','cash','bit','offset')),
+  account    TEXT NOT NULL CHECK (account = CASE WHEN method IN ('transfer','cheque') THEN 'bank' ELSE 'treasurer' END),
+  period     TEXT NOT NULL CHECK (period GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'),
+  -- A cheque's number can wait until it is deposited; nothing else has one.
+  cheque_no  TEXT CHECK (method = 'cheque' OR cheque_no IS NULL),
+  cheque_due TEXT,
+  -- 'held': received, no receipt yet. 'void': its receipt was voided, so it no longer counts.
+  status     TEXT NOT NULL CHECK (status IN ('held','cleared','bounced','void')),
+  note       TEXT NOT NULL DEFAULT '',
+  CHECK (status <> 'bounced' OR method = 'cheque'),
+  CHECK (NOT (method = 'cheque' AND status = 'cleared' AND cheque_no IS NULL))
+);
+"""
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS apartments (
   id             INTEGER PRIMARY KEY,
@@ -23,22 +43,7 @@ CREATE TABLE IF NOT EXISTS charges (
 CREATE UNIQUE INDEX IF NOT EXISTS charges_one_dues_per_month ON charges(apt_id, period) WHERE kind = 'dues';
 CREATE UNIQUE INDEX IF NOT EXISTS charges_one_opening ON charges(apt_id) WHERE kind = 'opening';
 
-CREATE TABLE IF NOT EXISTS payments (
-  id         INTEGER PRIMARY KEY,
-  apt_id     INTEGER NOT NULL REFERENCES apartments(id),
-  date       TEXT NOT NULL,
-  amount     INTEGER NOT NULL CHECK (amount > 0),
-  method     TEXT NOT NULL CHECK (method IN ('transfer','cheque','cash','bit','offset')),
-  account    TEXT NOT NULL CHECK (account = CASE WHEN method IN ('transfer','cheque') THEN 'bank' ELSE 'treasurer' END),
-  period     TEXT NOT NULL CHECK (period GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'),
-  cheque_no  TEXT CHECK ((method = 'cheque') = (cheque_no IS NOT NULL)),
-  cheque_due TEXT,
-  -- 'void': its receipt was voided, so it no longer counts toward the balance.
-  status     TEXT NOT NULL CHECK (status IN ('held','cleared','bounced','void')),
-  note       TEXT NOT NULL DEFAULT '',
-  CHECK (method = 'cheque' OR status IN ('cleared','void'))
-);
-
+{payments}
 CREATE TABLE IF NOT EXISTS receipts (
   no          INTEGER PRIMARY KEY,
   payment_id  INTEGER NOT NULL UNIQUE REFERENCES payments(id),
@@ -64,6 +69,23 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
+SCHEMA = SCHEMA.replace("{payments}", PAYMENTS)
+
+# Applied in order to databases created before the change; a new database gets
+# SCHEMA directly. SQLite cannot alter a CHECK, so changing one means a rebuild.
+MIGRATIONS = [
+    # 1: any method can be marked received before its receipt; cheque numbers can wait.
+    PAYMENTS.replace("IF NOT EXISTS payments", "payments_v1") + """
+    INSERT INTO payments_v1 (id, apt_id, date, amount, method, account, period, cheque_no, cheque_due, status, note)
+      SELECT id, apt_id, date, amount, method, account, period,
+             CASE WHEN status = 'held' AND cheque_no = '—' THEN NULL ELSE cheque_no END,
+             cheque_due, status, note
+      FROM payments;
+    DROP TABLE payments;
+    ALTER TABLE payments_v1 RENAME TO payments;
+    """,
+]
+
 APARTMENTS = 12
 DEFAULT_FEE = 25000
 
@@ -78,8 +100,15 @@ DEFAULT_SETTINGS = {
 def connect(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    # Foreign keys stay off while migrating: rebuilding payments drops the table receipts point at.
+    if conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'payments'").fetchone()[0]:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        for number, script in enumerate(MIGRATIONS[version:], start=version + 1):
+            conn.executescript(f"BEGIN; {script} PRAGMA user_version = {number}; COMMIT;")
+    else:
+        conn.execute(f"PRAGMA user_version = {len(MIGRATIONS)}")
     conn.executescript(SCHEMA)
+    conn.execute("PRAGMA foreign_keys = ON")
     if conn.execute("SELECT COUNT(*) FROM apartments").fetchone()[0] == 0:
         conn.executemany(
             "INSERT INTO apartments (id, monthly_fee) VALUES (?, ?)",

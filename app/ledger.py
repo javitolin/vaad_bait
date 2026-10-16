@@ -103,10 +103,14 @@ def balances(conn: sqlite3.Connection) -> dict[int, int]:
 
 
 def grid(conn: sqlite3.Connection, year: int, current: str) -> dict[tuple[int, str], dict]:
+    """Per apartment and month: what is due, what came in, and what is still to process."""
     cells: dict[tuple[int, str], dict] = {}
 
     def cell(apt: int, period: str) -> dict:
-        return cells.setdefault((apt, period), {"due": 0, "paid": 0, "held": [], "bounced": False, "receipt": None, "method": None})
+        return cells.setdefault((apt, period), {
+            "due": 0, "paid": 0, "held_id": None, "method": None, "cheque_no": None,
+            "receipt": None, "bounced": False,
+        })
 
     prefix = f"{year:04d}-%"
     for apt, period, amount in conn.execute(
@@ -114,29 +118,29 @@ def grid(conn: sqlite3.Connection, year: int, current: str) -> dict[tuple[int, s
     ):
         cell(apt, period)["due"] = amount
     for p in conn.execute("""
-        SELECT p.apt_id, p.period, p.amount, p.method, p.status, p.cheque_no, r.no AS receipt
+        SELECT p.id, p.apt_id, p.period, p.amount, p.method, p.status, p.cheque_no, r.no AS receipt
         FROM payments p LEFT JOIN receipts r ON r.payment_id = p.id AND r.voided_at IS NULL
         WHERE p.period LIKE ? ORDER BY p.id
     """, (prefix,)):
         c = cell(p["apt_id"], p["period"])
         if p["status"] == "cleared":
             c["paid"] += p["amount"]
-            c["method"] = p["method"]
-            c["receipt"] = p["receipt"] or c["receipt"]
-        elif p["status"] == "held":
-            c["held"].append(p["cheque_no"])
+            c["method"] = c["method"] or p["method"]
+            c["receipt"] = c["receipt"] or p["receipt"]
+        elif p["status"] == "held" and c["held_id"] is None:
+            c["held_id"], c["method"], c["cheque_no"] = p["id"], p["method"], p["cheque_no"]
         elif p["status"] == "bounced":
             c["bounced"] = True
 
     for (apt, period), c in cells.items():
-        if c["paid"] and c["paid"] >= c["due"]:
+        if c["held_id"]:
+            c["status"] = "received"
+        elif c["paid"] and c["paid"] >= c["due"]:
             c["status"] = "paid"
-        elif c["held"]:
-            c["status"] = "held"
         elif c["paid"]:
             c["status"] = "partial"
         elif c["due"] and period <= current:
-            c["status"] = "owed"
+            c["status"] = "missing"
         else:
             c["status"] = ""
     return cells
@@ -162,14 +166,14 @@ def record_payment(conn: sqlite3.Connection, *, apt_id: int, period: str, amount
     if amount <= 0:
         raise Invalid("הסכום חייב להיות גדול מאפס")
     cheque_no = cheque_no.strip()
-    if method == "cheque" and not cheque_no:
-        raise Invalid("חסר מספר צ׳ק")
     status = "held" if method == "cheque" and not deposited else "cleared"
+    if method == "cheque" and status == "cleared" and not cheque_no:
+        raise Invalid("חסר מספר צ׳ק")
     payment_id = conn.execute(
         "INSERT INTO payments (apt_id, date, amount, method, account, period, cheque_no, cheque_due, status, note) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (apt_id, paid_on.isoformat(), amount, method, ACCOUNT[method], period,
-         cheque_no if method == "cheque" else None,
+         cheque_no if method == "cheque" and cheque_no else None,
          cheque_due.isoformat() if method == "cheque" and cheque_due else None,
          status, note.strip()),
     ).lastrowid
@@ -223,48 +227,76 @@ def recent_receipts(conn: sqlite3.Connection, limit: int = 100) -> list[sqlite3.
     """, (limit,)).fetchall()
 
 
-# --- cheques ------------------------------------------------------------------
+# --- marks, cheques and processing ---------------------------------------------
 
-def add_cheque_series(conn: sqlite3.Connection, *, apt_id: int, first_no: int, count: int, amount: int,
-                      first_due: date, first_period: str, received_on: date) -> None:
-    _apartment(conn, apt_id)
-    check_period(first_period)
-    if not 1 <= count <= 24:
-        raise Invalid("מספר הצ׳קים צריך להיות בין 1 ל-24")
-    if amount <= 0:
-        raise Invalid("הסכום חייב להיות גדול מאפס")
-    conn.executemany(
-        "INSERT INTO payments (apt_id, date, amount, method, account, period, cheque_no, cheque_due, status) "
-        "VALUES (?, ?, ?, 'cheque', 'bank', ?, ?, ?, 'held')",
-        [(apt_id, received_on.isoformat(), amount, period_add(first_period, i), str(first_no + i),
-          date_add_months(first_due, i).isoformat()) for i in range(count)],
-    )
-
-
-def held_cheques(conn: sqlite3.Connection) -> list[sqlite3.Row]:
-    return conn.execute("""
-        SELECT p.*, COALESCE(NULLIF(a.occupant, ''), a.owner) AS payer
-        FROM payments p JOIN apartments a ON a.id = p.apt_id
-        WHERE p.status = 'held' ORDER BY p.cheque_due, p.apt_id
-    """).fetchall()
+def mark(conn: sqlite3.Connection, apt_id: int, period: str, method: str, today: date) -> int:
+    """Received, details later: one tap on the grid. No receipt until it is processed."""
+    apartment = _apartment(conn, apt_id)
+    check_period(period)
+    if method not in ACCOUNT:
+        raise Invalid(f"אמצעי תשלום לא מוכר: {method}")
+    if apartment["monthly_fee"] <= 0:
+        raise Invalid(f"לדירה {apt_id} אין דמי ועד")
+    if conn.execute(
+        "SELECT 1 FROM payments WHERE apt_id = ? AND period = ? AND status IN ('held', 'cleared')", (apt_id, period)
+    ).fetchone():
+        raise Invalid(f"דירה {apt_id} כבר מסומנת ל{period_he(period)}")
+    # A cheque for a month is dated to it, so it becomes depositable when the month starts.
+    return conn.execute(
+        "INSERT INTO payments (apt_id, date, amount, method, account, period, cheque_due, status) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'held')",
+        (apt_id, today.isoformat(), apartment["monthly_fee"], method, ACCOUNT[method], period,
+         f"{period}-01" if method == "cheque" else None),
+    ).lastrowid
 
 
-def _cheque(conn: sqlite3.Connection, payment_id: int) -> sqlite3.Row:
-    row = conn.execute("SELECT * FROM payments WHERE id = ? AND method = 'cheque'", (payment_id,)).fetchone()
-    if row is None:
-        raise Invalid(f"אין צ׳ק {payment_id}")
+def _held(conn: sqlite3.Connection, payment_id: int) -> sqlite3.Row:
+    row = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
+    if row is None or row["status"] != "held":
+        raise Invalid("התשלום כבר טופל או לא קיים")
     return row
 
 
-def clear_cheque(conn: sqlite3.Connection, payment_id: int, today: date, now: datetime) -> int:
-    if _cheque(conn, payment_id)["status"] != "held":
-        raise Invalid("אפשר להפקיד רק צ׳ק שממתין")
+def unmark(conn: sqlite3.Connection, payment_id: int) -> None:
+    # Only a held payment has no receipt yet, so nothing a resident holds disappears.
+    _held(conn, payment_id)
+    conn.execute("DELETE FROM payments WHERE id = ?", (payment_id,))
+
+
+def set_cheque_no(conn: sqlite3.Connection, payment_id: int, cheque_no: str) -> None:
+    row = _held(conn, payment_id)
+    if row["method"] != "cheque":
+        raise Invalid("רק לצ׳ק יש מספר")
+    if not cheque_no.strip():
+        raise Invalid("חסר מספר צ׳ק")
+    conn.execute(
+        "UPDATE payments SET cheque_no = ?, cheque_due = COALESCE(cheque_due, ?) WHERE id = ?",
+        (cheque_no.strip(), f"{row['period']}-01", payment_id),
+    )
+
+
+def clear_payment(conn: sqlite3.Connection, payment_id: int, today: date, now: datetime) -> int:
+    """Deposit a cheque or confirm a transfer/cash: the receipt is issued here."""
+    row = _held(conn, payment_id)
+    if row["method"] == "cheque" and not row["cheque_no"]:
+        raise Invalid("קודם להוסיף את מספר הצ׳ק")
     conn.execute("UPDATE payments SET status = 'cleared', date = ? WHERE id = ?", (today.isoformat(), payment_id))
     return issue_receipt(conn, payment_id, now)
 
 
+def held_payments(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute("""
+        SELECT p.*, COALESCE(NULLIF(a.occupant, ''), a.owner) AS payer
+        FROM payments p JOIN apartments a ON a.id = p.apt_id
+        WHERE p.status = 'held' ORDER BY p.period, p.apt_id
+    """).fetchall()
+
+
 def bounce_cheque(conn: sqlite3.Connection, payment_id: int, now: datetime) -> None:
-    if _cheque(conn, payment_id)["status"] == "bounced":
+    row = conn.execute("SELECT status FROM payments WHERE id = ? AND method = 'cheque'", (payment_id,)).fetchone()
+    if row is None:
+        raise Invalid(f"אין צ׳ק {payment_id}")
+    if row["status"] == "bounced":
         raise Invalid("הצ׳ק כבר מסומן כחוזר")
     conn.execute("UPDATE payments SET status = 'bounced' WHERE id = ?", (payment_id,))
     no = conn.execute(
@@ -276,10 +308,11 @@ def bounce_cheque(conn: sqlite3.Connection, payment_id: int, now: datetime) -> N
 
 def deposit_due(conn: sqlite3.Connection, today: date, now: datetime) -> list[int]:
     due = conn.execute(
-        "SELECT id FROM payments WHERE status = 'held' AND cheque_due <= ? ORDER BY cheque_due, apt_id",
+        "SELECT id FROM payments WHERE status = 'held' AND method = 'cheque' AND cheque_no IS NOT NULL "
+        "AND cheque_due <= ? ORDER BY cheque_due, apt_id",
         (today.isoformat(),),
     ).fetchall()
-    return [clear_cheque(conn, row[0], today, now) for row in due]
+    return [clear_payment(conn, row[0], today, now) for row in due]
 
 
 # --- apartments ---------------------------------------------------------------

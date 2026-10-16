@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon %}
+{% block title %}לטיפול{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><p class="eyebrow">{{ held | length }} פריטים</p><h1>לטיפול</h1></div>
+</div>
+
+{% if due %}
+<form method="post" action="/deposit-due" class="banner warn" data-confirm="להפקיד {{ due }} צ׳קים ולהפיק קבלות?">
+  <input type="hidden" name="back" value="/todo">
+  {{ icon("clock") }}<span>{{ due }} צ׳קים עם מספר שמועדם הגיע</span>
+  <button class="btn primary small">הפקדה והפקת קבלות</button>
+</form>
+{% endif %}
+
+{% if issued %}
+<section class="card flush">
+  <div class="card-head"><h2>הופקו היום, לשליחה</h2></div>
+  <ul class="list" style="margin-top: 8px">
+    {% for x in issued %}
+    <li>
+      <span class="apt-no">{{ x.r.apt_id }}</span>
+      <div class="list-main">
+        <b>{{ x.r.payer or "דירה " ~ x.r.apt_id }}</b>
+        <small><a href="/receipts/{{ x.r.no }}">קבלה {{ x.r.no }}</a> · {{ x.r.period | period_he }} · ₪{{ x.r.amount | money }}</small>
+      </div>
+      <div class="list-end">
+        <button type="button" class="btn wa small" data-share data-pdf="/receipts/{{ x.r.no }}/pdf"
+                data-name="receipt-{{ x.r.no }}.pdf" data-text="{{ x.text }}" data-phone="{{ x.phone }}">{{ icon("chat", "i-sm") }}וואטסאפ</button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if held %}
+{% for period, items in held | groupby("period") %}
+<section class="card flush">
+  <div class="card-head"><h2>{{ period | period_he }}</h2><span class="muted">{{ items | length }}</span></div>
+  <ul class="list" style="margin-top: 8px">
+    {% for p in items %}
+    <li>
+      <span class="apt-no">{{ p.apt_id }}</span>
+      <div class="list-main">
+        <b>{{ p.payer or "דירה " ~ p.apt_id }}</b>
+        <small>{{ METHOD_HE[p.method] }}{% if p.cheque_no %} {{ p.cheque_no }}{% endif %} · ₪{{ p.amount | money }}</small>
+      </div>
+      <div class="list-end">
+        {% if p.method == "cheque" and not p.cheque_no %}
+          <form method="post" action="/payments/{{ p.id }}/cheque" class="inline-add">
+            <input type="hidden" name="back" value="/todo">
+            <input name="cheque_no" inputmode="numeric" placeholder="מספר צ׳ק" aria-label="מספר צ׳ק לדירה {{ p.apt_id }}" required>
+            <button class="btn small">הוסף</button>
+          </form>
+        {% else %}
+          <form method="post" action="/payments/{{ p.id }}/clear">
+            <input type="hidden" name="back" value="/todo">
+            <button class="btn primary small">{{ icon("receipt", "i-sm") }}{{ "הופקד" if p.method == "cheque" else "הפקת קבלה" }}</button>
+          </form>
+          {% if p.method == "cheque" %}
+          <form method="post" action="/payments/{{ p.id }}/bounce" data-confirm="לסמן את צ׳ק {{ p.cheque_no }} כחוזר?">
+            <input type="hidden" name="back" value="/todo">
+            <button class="btn small danger" aria-label="חזר">{{ icon("x", "i-sm") }}</button>
+          </form>
+          {% endif %}
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+{% else %}
+<section class="card"><div class="empty">{{ icon("inbox") }}<p>אין מה לטפל. סימונים חדשים מהדף הראשי יופיעו כאן.</p></div></section>
+{% endif %}
+{% endblock %}

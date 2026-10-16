@@ -103,7 +103,9 @@ Rules:
      On desktop, the PDF downloads and `wa.me/972…?text=<template>` opens the resident's chat, so you attach the file there.
    - **Print**: opens the PDF (A5).
    - The PDF shows receipt no., date, apartment, payer, amount, method/cheque no., period, ועד name, treasurer.
-3. **Cheque series**: add many cheques at once; list of held cheques by due date.
+3. **Marking + לטיפול**: tap a tenant's month on the grid to mark what came in (cheque/transfer/cash/Bit/offset), no details.
+   On the 15th, the לטיפול page lists everything marked: add each cheque's number inline, then deposit / issue the receipt,
+   and send the day's receipts on WhatsApp from the same page.
 4. **Expenses**: add/list, with a "paid from my pocket" toggle (account = treasurer). Attach vendor receipts (camera photo or PDF), view them later.
 5. **Balances**: per apartment, plus the bank and treasurer accounts.
 6. **Yearly summary**: pick a year → generate a PDF on demand and share it the same way as receipts (WhatsApp share sheet / download).
