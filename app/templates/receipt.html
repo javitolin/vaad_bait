@@ -47,6 +47,7 @@
               data-pdf="/receipts/{{ r.no }}/pdf" data-name="receipt-{{ r.no }}.pdf"
               data-text="{{ text }}" data-phone="{{ phone }}">{{ icon("chat") }}שליחה בוואטסאפ</button>
       <a class="btn block" href="/receipts/{{ r.no }}/pdf" target="_blank">{{ icon("print") }}הדפסה / PDF</a>
+      <p class="hint">העותק השמור: <bdi dir="ltr" class="location">{{ location }}</bdi></p>
       {% if phone %}
         <p class="hint">ישלח ל{{ r.payer or "דירה " ~ r.apt_id }}. בטלפון נפתח חלון שיתוף — בחר וואטסאפ.</p>
       {% else %}

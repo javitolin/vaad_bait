@@ -346,6 +346,7 @@ input[dir="ltr"] { text-align: right; }
   border: 4px solid #c0262d; color: #c0262d; border-radius: 12px; padding: 6px 22px;
   font-size: 2.6rem; font-weight: 700; opacity: 0.85; background: rgba(255, 255, 255, 0.6);
 }
+.location { font: 0.75rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; user-select: all; }
 .side { display: grid; gap: 12px; position: sticky; top: 80px; }
 .side .card { margin: 0; }
 details.danger-zone summary { cursor: pointer; color: var(--owed); font-weight: 500; list-style: none; }

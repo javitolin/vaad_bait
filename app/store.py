@@ -54,6 +54,10 @@ class Store:
             conn.close()
         self._upload()
 
+    def location(self, key: str) -> str:
+        """Where a stored file lives, in a form someone can look it up by."""
+        return f"s3://{self.bucket}/{key}" if self.s3 else os.path.abspath(os.path.join(self.root, key))
+
     def put_file(self, key: str, body: bytes, content_type: str) -> None:
         if self.s3 is None:
             path = os.path.join(self.root, key)

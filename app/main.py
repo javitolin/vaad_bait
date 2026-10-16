@@ -271,7 +271,7 @@ def receipt(request: Request, no: int, new: bool = False):
     with store.read() as conn:
         r = ledger.receipt(conn, no)
         settings = db.settings(conn)
-    return render(request, "receipt.html", r=r, s=settings, new=new,
+    return render(request, "receipt.html", r=r, s=settings, new=new, location=store.location(r["s3_key"]),
                   text=receipt_text(settings, r), phone=ledger.wa_phone(r["phone"]))
 
 
@@ -283,7 +283,7 @@ def receipt_pdf(no: int):
     # Rendered on first open, then kept: the stored file is what the resident got.
     body = store.get_file(r["s3_key"])
     if body is None:
-        body = pdf.receipt_pdf(r, settings)
+        body = pdf.receipt_pdf(r, settings, store.location(r["s3_key"]))
         store.put_file(r["s3_key"], body, "application/pdf")
     return Response(body, media_type="application/pdf",
                     headers={"content-disposition": f'inline; filename="receipt-{no}.pdf"'})

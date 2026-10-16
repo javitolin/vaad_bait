@@ -31,7 +31,7 @@ def _line(pdf: FPDF, label: str, value: str) -> None:
     pdf.cell(A5[0] - pdf.l_margin - pdf.r_margin - label_w - 2, 9, value, align="R", new_x="LMARGIN", new_y="NEXT")
 
 
-def receipt_pdf(r: dict, settings: dict) -> bytes:
+def receipt_pdf(r: dict, settings: dict, location: str) -> bytes:
     pdf = _page()
     width = A5[0] - pdf.l_margin - pdf.r_margin
 
@@ -79,8 +79,10 @@ def receipt_pdf(r: dict, settings: dict) -> bytes:
         pdf.cell(width, 6, f"בוטלה {date_he(r['voided_at'])}: {r['void_reason']}", align="C")
         pdf.set_text_color(0, 0, 0)
 
-    pdf.set_y(-20)
+    pdf.set_y(-22)
     pdf.set_font("Rubik", "", 8)
     pdf.set_text_color(130, 130, 130)
-    pdf.cell(width, 5, "הופק במערכת ועד הבית", align="C")
+    pdf.cell(width, 5, "הופק במערכת ועד הבית. העותק השמור:", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Rubik", "", 6.5)
+    pdf.cell(width, 4, location, align="C")
     return bytes(pdf.output())
