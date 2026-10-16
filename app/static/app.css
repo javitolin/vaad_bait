@@ -237,6 +237,9 @@ input[dir="ltr"] { text-align: right; }
 .year-switch a { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; color: var(--text-2); }
 .year-switch a:hover { background: var(--surface-2); color: var(--text); }
 .year-switch span { min-width: 52px; text-align: center; font-weight: 600; }
+.year-switch .month-label { min-width: 120px; }
+.matrix thead th a { color: inherit; }
+.matrix thead th.shown { color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
 
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
 .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; }

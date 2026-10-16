@@ -1,3 +1,4 @@
+import hashlib
 import os
 from datetime import date, datetime
 from typing import Annotated
@@ -37,6 +38,10 @@ templates = Jinja2Templates(directory=os.path.join(HERE, "templates"))
 templates.env.filters.update(money=ledger.money, period_he=ledger.period_he, date_he=ledger.date_he,
                              shekels=lambda agorot: f"{round(agorot / 100):,}")
 templates.env.globals.update(METHOD_HE=ledger.METHOD_HE, METHOD_SHORT=ledger.METHOD_SHORT, MONTHS_HE=ledger.MONTHS_HE)
+# Changes with the files, so a browser never keeps running last deploy's JS or CSS.
+templates.env.globals["asset_version"] = hashlib.sha256(b"".join(
+    open(os.path.join(HERE, "static", name), "rb").read() for name in ("app.css", "app.js")
+)).hexdigest()[:10]
 
 
 def now() -> datetime:
@@ -139,24 +144,26 @@ def home():
 
 
 @app.get("/grid")
-def grid(request: Request, year: int | None = None):
+def grid(request: Request, year: int | None = None, month: str | None = None):
     refresh_dues()
     current = today().strftime("%Y-%m")
-    year = year or today().year
+    shown = ledger.check_period(month) if month else current
+    year = year or int(shown[:4])
     with store.read() as conn:
         apartments = conn.execute("SELECT * FROM apartments ORDER BY id").fetchall()
         cells = ledger.grid(conn, year, current)
-        this_month = ledger.grid(conn, int(current[:4]), current)
+        shown_cells = ledger.grid(conn, int(shown[:4]), current)
         balances = ledger.balances(conn)
         todo = len(ledger.held_payments(conn))
-    month = [this_month.get((a["id"], current)) or {} for a in apartments]
+    row = [shown_cells.get((a["id"], shown)) or {} for a in apartments]
     return render(
-        request, "grid.html", year=year, apartments=apartments, cells=cells, this_month=this_month,
-        balances=balances, periods=[f"{year}-{m:02d}" for m in range(1, 13)], current=current,
-        month_he=ledger.MONTHS_HE[int(current[5:]) - 1],
-        received=sum(1 for c in month if c.get("status") in ("paid", "received")),
-        missing_apts=[a["id"] for a, c in zip(apartments, month) if c.get("status") in ("missing", "partial")],
-        collected=sum(c.get("paid", 0) for c in month),
+        request, "grid.html", year=year, apartments=apartments, cells=cells, shown_cells=shown_cells,
+        balances=balances, periods=[f"{year}-{m:02d}" for m in range(1, 13)], current=current, shown=shown,
+        prev_month=ledger.period_add(shown, -1), next_month=ledger.period_add(shown, 1),
+        received=sum(1 for c in row if c.get("status") in ("paid", "received")),
+        # A future month is not missing anything yet, just not marked.
+        missing_apts=[a["id"] for a, c in zip(apartments, row) if c.get("status") not in ("paid", "received")],
+        collected=sum(c.get("paid", 0) for c in row),
         todo=todo, rows=(len(apartments) + 1) // 2,
     )
 

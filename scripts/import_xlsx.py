@@ -5,7 +5,7 @@
 
 Months marked "קיבל קבלה" already got a paper receipt, so they become paid
 payments with no new receipt number. Cheques without a receipt yet (Nov-Dec)
-become marked cheques; their numbers are added on the לטיפול page. Refuses to touch a database
+and transfers without a receipt yet (Nov-Dec) become marks, processed on the לטיפול page. Refuses to touch a database
 that already has payments.
 """
 import os
@@ -70,20 +70,18 @@ def main(path: str) -> None:
                 if settled:
                     status, note = "cleared", "קבלה ידנית (פנקס)"
                     paid += 1
-                elif method == "cheque":
+                else:
                     status, note = "held", "יובא מהאקסל"
                     held += 1
-                else:
-                    continue  # a transfer that has not arrived yet is just an open month
                 conn.execute(
                     "INSERT INTO payments (apt_id, date, amount, method, account, period, cheque_no, cheque_due, status, note) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (apt, date(YEAR, month, 1).isoformat(), 25000, method, ledger.ACCOUNT[method], period,
                      UNKNOWN_CHEQUE if method == "cheque" and status == "cleared" else None,
-                     date(YEAR, month, 1).isoformat() if status == "held" else None, status, note),
+                     date(YEAR, month, 1).isoformat() if status == "held" and method == "cheque" else None, status, note),
                 )
         ledger.ensure_dues(conn, date.today().strftime("%Y-%m"))
-    print(f"imported 12 apartments, {paid} paid months, {held} held cheques -> {bucket or store.path}")
+    print(f"imported 12 apartments, {paid} paid months, {held} marked months -> {bucket or store.path}")
 
 
 if __name__ == "__main__":

@@ -4,20 +4,20 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <p class="eyebrow">{{ month_he }} {{ current[:4] }}</p>
+    <p class="eyebrow">{{ shown | period_he }}</p>
     <h1>תשלומי ועד</h1>
   </div>
 </div>
 
 <section class="stats">
   <div class="stat">
-    <span class="stat-label"><span class="dot"></span>התקבלו ב{{ month_he }}</span>
+    <span class="stat-label"><span class="dot"></span>התקבלו ב{{ shown | period_he }}</span>
     <span class="stat-value num">{{ received }}/{{ apartments | length }}</span>
     <span class="stat-sub">₪{{ collected | shekels }} כבר עם קבלה</span>
     <div class="meter"><span style="width: {{ (100 * received / (apartments | length)) | round | int }}%"></span></div>
   </div>
   <div class="stat owed">
-    <span class="stat-label"><span class="dot"></span>חסרים ב{{ month_he }}</span>
+    <span class="stat-label"><span class="dot"></span>{{ "טרם סומנו" if shown > current else "חסרים" }} ב{{ shown | period_he }}</span>
     <span class="stat-value num">{{ missing_apts | length }}</span>
     <span class="stat-sub">{% if missing_apts %}דירות {{ missing_apts | join(", ") }}{% else %}כולם מסומנים{% endif %}</span>
   </div>
@@ -30,13 +30,17 @@
 
 <section class="card flush">
   <div class="card-head">
-    <h2>{{ month_he }}</h2>
-    <span class="muted">לחיצה על דירה מסמנת מה התקבל</span>
+    <div class="year-switch" aria-label="חודש">
+      <a href="/grid?month={{ prev_month }}" aria-label="{{ prev_month | period_he }}">{{ icon("prev") }}</a>
+      <span class="month-label">{{ shown | period_he }}</span>
+      <a href="/grid?month={{ next_month }}" aria-label="{{ next_month | period_he }}">{{ icon("next") }}</a>
+    </div>
+    {% if shown != current %}<a class="btn small" href="/grid">החודש</a>{% else %}<span class="muted">לחיצה על דירה מסמנת מה התקבל</span>{% endif %}
   </div>
   <ul class="list cols" style="--rows: {{ rows }}; margin-top: 8px">
     {% for a in apartments %}
-    {% set c = this_month.get((a.id, current)) %}
-    <li class="tap {{ 'top' if loop.index == rows + 1 }} {{ 'c1' if loop.index <= rows }}" {{ cell_data(a, current, c) }} tabindex="0" role="button">
+    {% set c = shown_cells.get((a.id, shown)) %}
+    <li class="tap {{ 'top' if loop.index == rows + 1 }} {{ 'c1' if loop.index <= rows }}" {{ cell_data(a, shown, c) }} tabindex="0" role="button">
       <span class="apt-no">{{ a.id }}</span>
       <div class="list-main">
         <b>{{ apt_name(a) }}</b>
@@ -52,9 +56,9 @@
   <div class="card-head">
     <h2>כל השנה</h2>
     <div class="year-switch" aria-label="שנה">
-      <a href="/grid?year={{ year - 1 }}" aria-label="{{ year - 1 }}">{{ icon("prev") }}</a>
+      <a href="/grid?month={{ shown }}&year={{ year - 1 }}" aria-label="{{ year - 1 }}">{{ icon("prev") }}</a>
       <span>{{ year }}</span>
-      <a href="/grid?year={{ year + 1 }}" aria-label="{{ year + 1 }}">{{ icon("next") }}</a>
+      <a href="/grid?month={{ shown }}&year={{ year + 1 }}" aria-label="{{ year + 1 }}">{{ icon("next") }}</a>
     </div>
   </div>
   <div class="matrix-wrap">
@@ -62,7 +66,7 @@
       <thead>
         <tr>
           <th class="who">דירה</th>
-          {% for p in periods %}<th class="{{ 'now' if p == current }}">{{ MONTHS_HE[loop.index0][:3] }}</th>{% endfor %}
+          {% for p in periods %}<th class="{{ 'now' if p == current }} {{ 'shown' if p == shown and p != current }}"><a href="/grid?month={{ p }}&year={{ year }}">{{ MONTHS_HE[loop.index0][:3] }}</a></th>{% endfor %}
           <th class="bal">יתרה</th>
         </tr>
       </thead>
