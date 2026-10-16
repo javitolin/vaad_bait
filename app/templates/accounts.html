@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon %}
+{% block title %}קופה{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>קופה</h1></div></div>
+{% if saved %}<div class="banner ok">{{ icon("check") }}נשמר.</div>{% endif %}
+
+{% if balances %}
+<section class="stats" style="grid-template-columns: repeat(2, 1fr)">
+  <div class="stat">
+    <span class="stat-label"><span class="dot"></span>חשבון הבנק</span>
+    <span class="stat-value num">₪{{ balances.bank | money }}</span>
+    <span class="stat-sub">
+      {% if recon %}לפי דף בנק {{ recon.date | date_he }}: ₪{{ recon.statement | money }}
+        {% if recon.difference %} · <b style="color: var(--owed)">הפרש ₪{{ recon.difference | money }}</b>{% else %} · תואם ✓{% endif %}
+      {% else %}עוד לא הוזן דף בנק{% endif %}
+    </span>
+  </div>
+  <div class="stat {{ 'owed' if balances.treasurer < 0 }}">
+    <span class="stat-label"><span class="dot"></span>קופת גזבר</span>
+    <span class="stat-value num">₪{{ (balances.treasurer if balances.treasurer >= 0 else -balances.treasurer) | money }}</span>
+    <span class="stat-sub">{{ "הוועד חייב לך" if balances.treasurer < 0 else ("כסף של הוועד אצלך" if balances.treasurer > 0 else "מאוזן") }}</span>
+  </div>
+</section>
+{% else %}
+<div class="banner warn">{{ icon("alert") }}כדי לראות יתרות, למלא יתרות פתיחה למטה.</div>
+{% endif %}
+
+<section class="card stack">
+  <h2>סיכום שנתי</h2>
+  <p class="hint">הכנסות לפי דירה, הוצאות לפי קטגוריה ויתרות. נשמר עותק בכל הפקה.</p>
+  <ul class="list">
+    {% for y in years %}
+    <li>
+      <div class="list-main"><b>{{ y }}</b></div>
+      <div class="list-end">
+        <a class="btn small" href="/summary/{{ y }}/pdf" target="_blank">{{ icon("file", "i-sm") }}PDF</a>
+        <button type="button" class="btn small wa" data-share data-pdf="/summary/{{ y }}/pdf" data-name="summary-{{ y }}.pdf"
+                data-text="{{ summary_text[y] }}" data-phone="">{{ icon("chat", "i-sm") }}שליחה</button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
+<div class="apt-grid">
+  <form method="post" action="/accounts/statement" class="card stack apt-card">
+    <h2>דף בנק</h2>
+    <p class="hint">היתרה מדף הבנק, להשוואה מול הרישום.</p>
+    <div class="fields">
+      <label class="field"><span>תאריך</span><input type="date" name="day" value="{{ today }}" required></label>
+      <label class="field"><span>יתרה ₪</span><input name="balance" inputmode="decimal" required></label>
+    </div>
+    <div class="form-actions"><button class="btn primary small">שמירה</button></div>
+    {% if statements %}<p class="hint">{% for b in statements %}{{ b.date | date_he }}: ₪{{ b.balance | money }}{{ " · " if not loop.last }}{% endfor %}</p>{% endif %}
+  </form>
+
+  <form method="post" action="/transfers" class="card stack apt-card">
+    <h2>העברה בין הקופות</h2>
+    <p class="hint">למשל צ׳ק מהוועד שמחזיר לך כסף שהוצאת מכיסך.</p>
+    <div class="segmented">
+      <input type="radio" name="from_account" id="t-bank" value="bank" checked><label for="t-bank">מהבנק אליי</label>
+      <input type="radio" name="from_account" id="t-tr" value="treasurer"><label for="t-tr">ממני לבנק</label>
+    </div>
+    <div class="fields">
+      <label class="field"><span>סכום ₪</span><input name="amount" inputmode="decimal" required></label>
+      <label class="field"><span>תאריך</span><input type="date" name="day" value="{{ today }}" required></label>
+      <label class="field"><span>מספר צ׳ק <small>(לא חובה)</small></span><input name="cheque_no" inputmode="numeric"></label>
+      <label class="field"><span>הערה</span><input name="note"></label>
+    </div>
+    <div class="form-actions"><button class="btn primary small">הוספה</button></div>
+  </form>
+</div>
+
+{% if transfers %}
+<section class="card flush" style="margin-top: 16px">
+  <div class="card-head"><h2>העברות אחרונות</h2></div>
+  <ul class="list" style="margin-top: 8px">
+    {% for t in transfers %}
+    <li>
+      <span class="date-badge"><b>{{ t.date[8:10] | int }}</b><small>{{ MONTHS_HE[t.date[5:7] | int - 1][:3] }} {{ t.date[2:4] }}</small></span>
+      <div class="list-main"><b>{{ "מהבנק לגזבר" if t.from_account == "bank" else "מהגזבר לבנק" }}</b>
+        <small>{% if t.cheque_no %}צ׳ק {{ t.cheque_no }}{% endif %}{% if t.note %} · {{ t.note }}{% endif %}</small></div>
+      <div class="list-end">
+        <span class="amount num">₪{{ t.amount | money }}</span>
+        <form method="post" action="/transfers/{{ t.id }}/delete" data-confirm="למחוק את ההעברה?"><button class="btn small danger" aria-label="מחיקה">{{ icon("x", "i-sm") }}</button></form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<details class="card" style="margin-top: 16px" {{ "open" if not balances }}>
+  <summary><b>יתרות פתיחה</b></summary>
+  <form method="post" action="/accounts/openings" class="stack" style="margin-top: 14px">
+    <p class="hint">מה היה בכל קופה ביום שממנו המערכת סופרת. קופת גזבר שלילית = הוועד חייב לך.</p>
+    <div class="fields">
+      <label class="field"><span>נכון לתאריך</span><input type="date" name="accounts_start" value="{{ s.accounts_start }}" required></label>
+      <label class="field"><span>יתרת בנק ₪</span><input name="opening_bank" inputmode="decimal" value="{{ s.opening_bank | int | money }}" required></label>
+      <label class="field"><span>קופת גזבר ₪</span><input name="opening_treasurer" inputmode="decimal" value="{{ s.opening_treasurer | int | money }}" required></label>
+    </div>
+    <div class="form-actions"><button class="btn primary small">שמירה</button></div>
+  </form>
+</details>
+{% endblock %}

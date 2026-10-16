@@ -297,37 +297,182 @@ def void_receipt(no: int, reason: Annotated[str, Form()]):
 
 
 @app.get("/apartments")
-def apartments(request: Request):
+def apartments(request: Request, saved: bool = False):
     with store.read() as conn:
         rows = conn.execute("SELECT * FROM apartments ORDER BY id").fetchall()
         opening = ledger.opening_balances(conn)
-    return render(request, "apartments.html", apartments=rows, opening=opening)
+        settings = db.settings(conn)
+    year = today().year
+    shares = {a["id"]: ledger.fill(settings["wa_statement"], {"name": ledger.payer_name(a), "year": year, "apt": a["id"]})
+              for a in rows}
+    return render(request, "apartments.html", apartments=rows, opening=opening, saved=saved, year=year,
+                  shares=shares, phones={a["id"]: ledger.wa_phone(a["phone"]) for a in rows})
 
 
-@app.post("/apartments/{apt_id}")
-def update_apartment(
-    apt_id: int,
-    monthly_fee: Annotated[str, Form()],
-    default_method: Annotated[str, Form()],
-    owner: Annotated[str, Form()] = "",
-    occupant: Annotated[str, Form()] = "",
-    phone: Annotated[str, Form()] = "",
-    opening: Annotated[str, Form()] = "",
+@app.post("/apartments")
+async def save_apartments(request: Request):
+    form = await request.form()
+    with store.write() as conn:
+        for (apt_id,) in conn.execute("SELECT id FROM apartments ORDER BY id").fetchall():
+            field = lambda name: str(form.get(f"{name}_{apt_id}", ""))  # noqa: E731
+            ledger.update_apartment(
+                conn, apt_id, owner=field("owner"), occupant=field("occupant"), phone=field("phone"),
+                monthly_fee=ledger.parse_money(field("monthly_fee")), default_method=field("default_method"),
+                opening=ledger.parse_money(field("opening")),
+            )
+    return see("/apartments?saved=1")
+
+
+@app.get("/apartments/{apt_id}/statement")
+def apartment_statement(apt_id: int, year: int | None = None):
+    with store.read() as conn:
+        st = ledger.statement(conn, apt_id, year or today().year)
+        settings = db.settings(conn)
+    body = pdf.statement_pdf(st, settings, today().strftime("%d/%m/%Y"))
+    return Response(body, media_type="application/pdf",
+                    headers={"content-disposition": f'inline; filename="statement-{apt_id}-{st["year"]}.pdf"'})
+
+
+# --- expenses -----------------------------------------------------------------
+
+MAX_UPLOAD = 5 * 1024 * 1024
+
+
+@app.get("/expenses")
+def expenses_page(request: Request, year: int | None = None):
+    year = year or today().year
+    with store.read() as conn:
+        rows = ledger.expenses(conn, year)
+        settings = db.settings(conn)
+    categories = [c.strip() for c in settings["expense_categories"].splitlines() if c.strip()]
+    return render(request, "expenses.html", expenses=rows, year=year, categories=categories,
+                  total=sum(e["amount"] for e in rows), today=today().isoformat())
+
+
+@app.post("/expenses")
+async def add_expense(request: Request):
+    form = await request.form()
+    uploads = [f for f in form.getlist("files") if getattr(f, "filename", "")]
+    files = []
+    for upload in uploads:
+        data = await upload.read()
+        if len(data) > MAX_UPLOAD:
+            raise Invalid(f"הקובץ {upload.filename} גדול מ-5MB")
+        files.append((upload.filename, upload.content_type or "", data))
+    with store.write() as conn:
+        expense_id = ledger.add_expense(
+            conn, day=parse_date(str(form.get("date", "")), "תאריך"), vendor=str(form.get("vendor", "")),
+            category=str(form.get("category", "")), amount=ledger.parse_money(str(form.get("amount", ""))),
+            account=str(form.get("account", "")), note=str(form.get("note", "")),
+        )
+        # Stored before the row commits: a failed upload leaves no expense pointing at nothing.
+        for name, content_type, data in files:
+            store.put_file(ledger.attach_file(conn, expense_id, name, content_type), data, content_type)
+    return see(f"/expenses?year={str(form.get('date', ''))[:4]}")
+
+
+@app.get("/expenses/files/{file_id}")
+def expense_file(file_id: int):
+    with store.read() as conn:
+        f = ledger.expense_file(conn, file_id)
+    body = store.get_file(f["s3_key"])
+    if body is None:
+        raise Invalid("הקובץ לא נמצא באחסון")
+    return Response(body, media_type=f["content_type"], headers={"content-disposition": "inline"})
+
+
+@app.post("/expenses/{expense_id}/delete")
+def delete_expense(expense_id: int, back: Annotated[str, Form()] = "/expenses"):
+    with store.write() as conn:
+        ledger.delete_expense(conn, expense_id)
+    return see(local(back, "/expenses"))
+
+
+# --- the two accounts and the yearly summary ----------------------------------
+
+@app.get("/accounts")
+def accounts(request: Request, saved: bool = False):
+    with store.read() as conn:
+        balances = ledger.account_balances(conn)
+        recon = ledger.reconciliation(conn)
+        transfers = conn.execute("SELECT * FROM transfers ORDER BY date DESC, id DESC LIMIT 20").fetchall()
+        statements = conn.execute("SELECT * FROM bank_statements ORDER BY date DESC LIMIT 6").fetchall()
+        settings = db.settings(conn)
+        years = [r[0] for r in conn.execute(
+            "SELECT DISTINCT substr(period, 1, 4) FROM payments UNION SELECT DISTINCT substr(date, 1, 4) FROM expenses "
+            "ORDER BY 1 DESC")]
+    year = today().year
+    return render(request, "accounts.html", balances=balances, recon=recon, transfers=transfers, statements=statements,
+                  s=settings, saved=saved, today=today().isoformat(), years=years or [str(year)],
+                  summary_text={y: ledger.fill(settings["wa_summary"], {"year": y}) for y in (years or [str(year)])})
+
+
+@app.post("/accounts/openings")
+def save_openings(
+    accounts_start: Annotated[str, Form()],
+    opening_bank: Annotated[str, Form()],
+    opening_treasurer: Annotated[str, Form()],
 ):
     with store.write() as conn:
-        ledger.update_apartment(
-            conn, apt_id, owner=owner, occupant=occupant, phone=phone,
-            monthly_fee=ledger.parse_money(monthly_fee), default_method=default_method,
-            opening=ledger.parse_money(opening),
-        )
-    return see(f"/apartments#apt-{apt_id}")
+        db.save_settings(conn, {
+            "accounts_start": parse_date(accounts_start, "תאריך פתיחה").isoformat(),
+            "opening_bank": str(ledger.parse_money(opening_bank)),
+            "opening_treasurer": str(ledger.parse_money(opening_treasurer)),
+        })
+    return see("/accounts?saved=1")
+
+
+@app.post("/accounts/statement")
+def bank_statement(day: Annotated[str, Form()], balance: Annotated[str, Form()]):
+    with store.write() as conn:
+        ledger.record_bank_statement(conn, parse_date(day, "תאריך"), ledger.parse_money(balance))
+    return see("/accounts")
+
+
+@app.post("/transfers")
+def add_transfer(
+    day: Annotated[str, Form()],
+    from_account: Annotated[str, Form()],
+    amount: Annotated[str, Form()],
+    cheque_no: Annotated[str, Form()] = "",
+    note: Annotated[str, Form()] = "",
+):
+    with store.write() as conn:
+        ledger.add_transfer(conn, day=parse_date(day, "תאריך"), from_account=from_account,
+                            amount=ledger.parse_money(amount), cheque_no=cheque_no, note=note)
+    return see("/accounts")
+
+
+@app.post("/transfers/{transfer_id}/delete")
+def delete_transfer(transfer_id: int):
+    with store.write() as conn:
+        conn.execute("DELETE FROM transfers WHERE id = ?", (transfer_id,))
+    return see("/accounts")
+
+
+@app.get("/summary/{year}/pdf")
+def summary_pdf(year: int):
+    with store.read() as conn:
+        sm = ledger.year_summary(conn, year)
+        settings = db.settings(conn)
+    key = f"summaries/{year}.pdf"
+    # Regenerated each time; bucket versioning keeps every copy that was sent out.
+    body = pdf.summary_pdf(sm, settings, today().strftime("%d/%m/%Y"), store.location(key))
+    store.put_file(key, body, "application/pdf")
+    return Response(body, media_type="application/pdf",
+                    headers={"content-disposition": f'inline; filename="summary-{year}.pdf"'})
+
+
+@app.get("/more")
+def more(request: Request):
+    return render(request, "more.html")
 
 
 @app.get("/settings")
-def settings_page(request: Request):
+def settings_page(request: Request, saved: bool = False):
     with store.read() as conn:
         values = db.settings(conn)
-    return render(request, "settings.html", s=values)
+    return render(request, "settings.html", s=values, saved=saved)
 
 
 @app.post("/settings")
@@ -335,6 +480,9 @@ def save_settings(
     building_name: Annotated[str, Form()],
     start_period: Annotated[str, Form()],
     wa_receipt: Annotated[str, Form()],
+    wa_statement: Annotated[str, Form()],
+    wa_summary: Annotated[str, Form()],
+    expense_categories: Annotated[str, Form()],
     building_address: Annotated[str, Form()] = "",
     treasurer_name: Annotated[str, Form()] = "",
 ):
@@ -345,8 +493,11 @@ def save_settings(
             "treasurer_name": treasurer_name.strip(),
             "start_period": ledger.check_period(start_period),
             "wa_receipt": wa_receipt.strip(),
+            "wa_statement": wa_statement.strip(),
+            "wa_summary": wa_summary.strip(),
+            "expense_categories": "\n".join(c.strip() for c in expense_categories.splitlines() if c.strip()),
         })
-    return see("/settings")
+    return see("/settings?saved=1")
 
 
 handler = Mangum(app, lifespan="off")

@@ -67,12 +67,50 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id       INTEGER PRIMARY KEY,
+  date     TEXT NOT NULL,
+  vendor   TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL,
+  amount   INTEGER NOT NULL CHECK (amount > 0),
+  account  TEXT NOT NULL CHECK (account IN ('bank','treasurer')),
+  note     TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS expense_files (
+  id           INTEGER PRIMARY KEY,
+  expense_id   INTEGER NOT NULL REFERENCES expenses(id),
+  s3_key       TEXT NOT NULL UNIQUE,
+  content_type TEXT NOT NULL,
+  name         TEXT NOT NULL DEFAULT ''
+);
+
+-- Money moving between the ועד's two accounts, e.g. a cheque reimbursing the treasurer.
+CREATE TABLE IF NOT EXISTS transfers (
+  id           INTEGER PRIMARY KEY,
+  date         TEXT NOT NULL,
+  from_account TEXT NOT NULL CHECK (from_account IN ('bank','treasurer')),
+  to_account   TEXT NOT NULL CHECK (to_account IN ('bank','treasurer') AND to_account <> from_account),
+  amount       INTEGER NOT NULL CHECK (amount > 0),
+  cheque_no    TEXT,
+  note         TEXT NOT NULL DEFAULT ''
+);
+
+-- Typed in from the paper statement, to compare against what the books say.
+CREATE TABLE IF NOT EXISTS bank_statements (
+  date    TEXT PRIMARY KEY,
+  balance INTEGER NOT NULL
+);
 """
 
 SCHEMA = SCHEMA.replace("{payments}", PAYMENTS)
 
-# Applied in order to databases created before the change; a new database gets
-# SCHEMA directly. SQLite cannot alter a CHECK, so changing one means a rebuild.
+# SCHEMA is the version-1 layout and must stay that way: a new database is created
+# from it and then runs MIGRATIONS[1:]. Changes to existing tables go here, in
+# order; brand-new tables can just be added to SCHEMA. SQLite cannot alter a CHECK,
+# so changing one means a rebuild.
+BASELINE = 1
 MIGRATIONS = [
     # 1: any method can be marked received before its receipt; cheque numbers can wait.
     PAYMENTS.replace("IF NOT EXISTS payments", "payments_v1") + """
@@ -84,6 +122,13 @@ MIGRATIONS = [
     DROP TABLE payments;
     ALTER TABLE payments_v1 RENAME TO payments;
     """,
+    # 2: who paid, as they were named then, so a new tenant never appears on an old receipt.
+    """
+    ALTER TABLE payments ADD COLUMN payer TEXT NOT NULL DEFAULT '';
+    UPDATE payments SET payer = (
+      SELECT COALESCE(NULLIF(occupant, ''), owner) FROM apartments WHERE apartments.id = payments.apt_id
+    );
+    """,
 ]
 
 APARTMENTS = 12
@@ -94,6 +139,13 @@ DEFAULT_SETTINGS = {
     "building_address": "",
     "treasurer_name": "",
     "wa_receipt": "שלום {name}, מצורפת קבלה מס׳ {receipt_no} על סך ₪{amount} עבור ועד בית {period}. תודה!",
+    "wa_statement": "שלום {name}, מצורף אישור על התשלומים לוועד הבית לשנת {year}. תודה!",
+    "wa_summary": "שלום לכולם, מצורף הסיכום השנתי של ועד הבית לשנת {year}.",
+    "expense_categories": "גנן\nמנקה\nביטוח\nמעלית שירות\nמעלית שנתי\nאגודה לתרבות הדיור\nשונות",
+    # Account balances count from this date; the openings are what each held on it.
+    "accounts_start": "",
+    "opening_bank": "0",
+    "opening_treasurer": "0",
 }
 
 
@@ -103,10 +155,11 @@ def connect(path: str) -> sqlite3.Connection:
     # Foreign keys stay off while migrating: rebuilding payments drops the table receipts point at.
     if conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'payments'").fetchone()[0]:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
-        for number, script in enumerate(MIGRATIONS[version:], start=version + 1):
-            conn.executescript(f"BEGIN; {script} PRAGMA user_version = {number}; COMMIT;")
     else:
-        conn.execute(f"PRAGMA user_version = {len(MIGRATIONS)}")
+        conn.executescript(SCHEMA)
+        version = BASELINE
+    for number, script in enumerate(MIGRATIONS[version:], start=version + 1):
+        conn.executescript(f"BEGIN; {script} PRAGMA user_version = {number}; COMMIT;")
     conn.executescript(SCHEMA)
     conn.execute("PRAGMA foreign_keys = ON")
     if conn.execute("SELECT COUNT(*) FROM apartments").fetchone()[0] == 0:

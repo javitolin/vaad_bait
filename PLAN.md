@@ -36,7 +36,7 @@ S3 vaad bucket (private, versioned)
   The function URL can only be reached through CloudFront (OAC).
 - **Database**: the SQLite file in S3. The app downloads it (cached in `/tmp` by ETag) and writes it back with `If-Match: <etag>`,
   so a write that races another one fails instead of overwriting it. Versioning means every save is a backup.
-- **Uploads** (vendor receipts, later cheque photos) go from the browser straight to S3 with a presigned POST (max 10 MB, image or PDF).
+- **Uploads** (vendor receipts) go through the app: the browser shrinks photos first, the app stores them in S3 (max 5 MB, image or PDF).
   This avoids the Lambda payload limit and the body-hash requirement.
 - **Form POSTs through CloudFront OAC need `x-amz-content-sha256`.** Port gallery's `bodyHash` into a small `submit.js` that sends forms with `fetch`.
 - **IAM**: the Lambda role can access only this bucket and the SSM session key. No access keys anywhere; local dev uses your AWS CLI profile.
@@ -133,20 +133,10 @@ Note: the sheet's income row (`=250*12`) counts all 12 apartments as paid every 
 Apt 6 paid by offset, not cash, so the overstatement is ₪2,500 for Jan–Oct. Fix this before sending a 2026 annual summary.
 
 ## Phases
-- **Phase 1 (weekend 1)**:
-  - Terraform: bucket, Cognito, Lambda, CloudFront, ACM, budget; `bootstrap-keys.sh`.
-  - Auth.
-  - Settings, apartments, monthly grid, record payment.
-  - Receipts: PDF to S3, WhatsApp share + print.
-  - Cheque series and opening balances.
-- **Phase 2 (weekend 2)**:
-  - Expenses with vendor receipt upload.
-  - Transfers, account balances + bank reconciliation.
-  - Yearly summary.
-  - Arrears list with WhatsApp reminder links.
-- **Later**:
-  - **Cheque photo → details filled in**: photograph a cheque (or a sheet of them), Claude API vision reads the number, bank/branch/account, amount and date, and prefills the cheque series form for you to confirm. The photo is kept in S3.
-  - Bank CSV import, only if the account gets online access.
+- **Phase 1 (done)**: AWS setup, auth, settings, apartments, grid with one-tap marks, לטיפול, receipts (PDF to S3, WhatsApp + print), Excel import.
+- **Phase 2 (done)**: expenses with vendor receipts, transfers, bank + treasurer balances with bank reconciliation,
+  per-apartment payment statement PDF, yearly summary PDF, payer name kept per payment (tenant changes are safe).
+- **Later, only if needed**: bank CSV import (needs online access), resident logins.
 
 ## Safety
 - S3: Block Public Access on, SSE-S3, versioning on, `prevent_destroy`. No `s3:DeleteObject` in the Lambda role — receipts, vendor files and DB versions are never deleted.

@@ -3,6 +3,7 @@
 {% block title %}הגדרות{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>הגדרות</h1></div></div>
+{% if saved %}<div class="banner ok">{{ icon("check") }}ההגדרות נשמרו.</div>{% endif %}
 
 <form method="post" action="/settings" style="max-width: 720px">
   <section class="card stack">
@@ -30,6 +31,20 @@
       <code>{name}</code><code>{apt}</code><code>{amount}</code><code>{period}</code><code>{receipt_no}</code>
     </div>
     <p class="hint">שם הדייר, מספר דירה, סכום, חודש ומספר קבלה — יוחלפו בערכים האמיתיים.</p>
+  </section>
+
+  <section class="card stack">
+    <h2>הודעות וואטסאפ נוספות</h2>
+    <label class="field"><span>אישור תשלומים לדירה</span><textarea name="wa_statement" rows="3" required>{{ s.wa_statement }}</textarea></label>
+    <div class="placeholders"><code>{name}</code><code>{apt}</code><code>{year}</code></div>
+    <label class="field"><span>סיכום שנתי</span><textarea name="wa_summary" rows="3" required>{{ s.wa_summary }}</textarea></label>
+    <div class="placeholders"><code>{year}</code></div>
+  </section>
+
+  <section class="card stack">
+    <h2>קטגוריות הוצאות</h2>
+    <textarea name="expense_categories" rows="7" required>{{ s.expense_categories }}</textarea>
+    <p class="hint">קטגוריה בכל שורה.</p>
   </section>
 
   <div class="form-actions" style="justify-content: space-between">

@@ -110,6 +110,63 @@ class LedgerTest(unittest.TestCase):
                 self.pay(**kwargs)
 
 
+class AccountsTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.conn = db.connect(os.path.join(self.tmp.name, "t.sqlite"))
+        db.save_settings(self.conn, {"start_period": "2026-10", "accounts_start": "2026-11-01",
+                                     "opening_bank": "1000000", "opening_treasurer": "-217650"})
+
+    def tearDown(self):
+        self.conn.close()
+        self.tmp.cleanup()
+
+    def test_balances_count_from_the_start_date(self):
+        ledger.record_payment(self.conn, apt_id=1, period="2026-10", amount=25000, method="transfer",
+                              paid_on=date(2026, 10, 20), now=NOW)  # before the start: already in the opening
+        ledger.record_payment(self.conn, apt_id=2, period="2026-11", amount=25000, method="transfer",
+                              paid_on=date(2026, 11, 2), now=NOW)
+        ledger.record_payment(self.conn, apt_id=6, period="2026-11", amount=25000, method="offset",
+                              paid_on=date(2026, 11, 2), now=NOW)
+        ledger.add_expense(self.conn, day=date(2026, 11, 3), vendor="", category="גנן", amount=70000, account="treasurer")
+        ledger.add_expense(self.conn, day=date(2026, 11, 4), vendor="", category="ביטוח", amount=49100, account="bank")
+        ledger.add_transfer(self.conn, day=date(2026, 11, 5), from_account="bank", amount=100000)
+        self.assertEqual(ledger.account_balances(self.conn), {
+            "bank": 1000000 + 25000 - 49100 - 100000,
+            "treasurer": -217650 + 25000 - 70000 + 100000,
+        })
+        ledger.record_bank_statement(self.conn, date(2026, 11, 6), 875900)
+        self.assertEqual(ledger.reconciliation(self.conn)["difference"], 0)
+
+    def test_a_new_tenant_never_appears_on_an_old_receipt(self):
+        self.conn.execute("UPDATE apartments SET occupant = 'הדייר הקודם' WHERE id = 3")
+        no = ledger.record_payment(self.conn, apt_id=3, period="2026-10", amount=25000, method="cash",
+                                   paid_on=date(2026, 10, 1), now=NOW)
+        ledger.update_apartment(self.conn, 3, owner="", occupant="דייר חדש", phone="", monthly_fee=25000,
+                                default_method="cash", opening=0)
+        self.assertEqual(ledger.receipt(self.conn, no)["payer"], "הדייר הקודם")
+        self.assertEqual(ledger.statement(self.conn, 3, 2026)["name"], "דייר חדש")
+
+    def test_only_images_and_pdfs_can_be_attached(self):
+        expense = ledger.add_expense(self.conn, day=date(2026, 11, 3), vendor="", category="גנן", amount=100, account="bank")
+        self.assertEqual(ledger.attach_file(self.conn, expense, "r.pdf", "application/pdf"), f"expenses/2026/{expense}-1.pdf")
+        with self.assertRaises(Invalid):
+            ledger.attach_file(self.conn, expense, "x.html", "text/html")
+
+    def test_reports_render(self):
+        import pdf
+        ledger.ensure_dues(self.conn, "2026-11")
+        ledger.record_payment(self.conn, apt_id=1, period="2026-11", amount=25000, method="cheque", cheque_no="9",
+                              paid_on=date(2026, 11, 2), now=NOW)
+        ledger.add_expense(self.conn, day=date(2026, 11, 3), vendor="", category="גנן", amount=70000, account="treasurer")
+        settings = db.settings(self.conn)
+        summary = ledger.year_summary(self.conn, 2026)
+        self.assertEqual((summary["income"], summary["spent"]), (25000, 70000))
+        for body in (pdf.statement_pdf(ledger.statement(self.conn, 1, 2026), settings, "01/11/2026"),
+                     pdf.summary_pdf(summary, settings, "01/11/2026", "s3://b/summaries/2026.pdf")):
+            self.assertTrue(body.startswith(b"%PDF"))
+
+
 class MigrationTest(unittest.TestCase):
     def test_old_database_is_rebuilt_without_losing_rows(self):
         with tempfile.TemporaryDirectory() as tmp:

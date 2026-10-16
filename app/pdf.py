@@ -1,17 +1,21 @@
 import os
 
 from fpdf import FPDF
+from fpdf.fonts import FontFace
 
-from ledger import METHOD_HE, date_he, money, period_he
+from ledger import ACCOUNTS, METHOD_HE, METHOD_SHORT, date_he, money, period_he
 
 FONTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "fonts")
 A5 = (148, 210)
+A4 = (210, 297)
+GREY = (110, 120, 130)
 
 
-def _page() -> FPDF:
-    pdf = FPDF(format=A5)
+def _page(size: tuple = A5) -> FPDF:
+    pdf = FPDF(format=size)
     pdf.set_margins(14, 14, 14)
-    pdf.set_auto_page_break(False)
+    # Long A4 reports flow onto more pages and stop short of the footer; a receipt is one fixed page.
+    pdf.set_auto_page_break(size != A5, margin=26)
     pdf.add_font("Rubik", "", os.path.join(FONTS, "Rubik-Regular.ttf"))
     pdf.add_font("Rubik", "B", os.path.join(FONTS, "Rubik-Bold.ttf"))
     # Hebrew needs the bidi pass that only the shaping engine performs; without it
@@ -85,4 +89,126 @@ def receipt_pdf(r: dict, settings: dict, location: str) -> bytes:
     pdf.cell(width, 5, "הופק במערכת ועד הבית. העותק השמור:", align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Rubik", "", 6.5)
     pdf.cell(width, 4, location, align="C")
+    return bytes(pdf.output())
+
+
+def _owed(agorot: int) -> str:
+    """Balances in words, so no minus sign has to survive right-to-left layout."""
+    if agorot > 0:
+        return f"חוב ₪{money(agorot)}"
+    if agorot < 0:
+        return f"זכות ₪{money(-agorot)}"
+    return "מאוזן"
+
+
+def _heading(pdf: FPDF, title: str, subtitle: str, settings: dict) -> None:
+    width = pdf.epw
+    pdf.set_font("Rubik", "B", 11)
+    pdf.set_text_color(*GREY)
+    pdf.cell(width, 6, " · ".join(x for x in (settings["building_name"], settings.get("building_address")) if x),
+             align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Rubik", "B", 20)
+    pdf.cell(width, 12, title, align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Rubik", "", 11)
+    pdf.cell(width, 6, subtitle, align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(6)
+
+
+def _table(pdf: FPDF, rows: list[list[str]], widths: tuple, numeric: set[int] = frozenset(), bold_last: bool = False) -> None:
+    # fpdf2 lays a table out left to right; Hebrew reads right to left, so the columns go in reversed.
+    order = list(reversed(range(len(widths))))
+    align = tuple("LEFT" if i in numeric else "RIGHT" for i in order)
+    pdf.set_font("Rubik", "", 9.5)
+    with pdf.table(col_widths=tuple(widths[i] for i in order), text_align=align, line_height=7,
+                   borders_layout="HORIZONTAL_LINES", headings_style=FontFace(emphasis="BOLD", fill_color=(236, 244, 242)),
+                   padding=(1, 2)) as table:
+        for n, values in enumerate(rows):
+            style = FontFace(emphasis="BOLD") if bold_last and n == len(rows) - 1 else None
+            row = table.row(style=style)
+            for i in order:
+                row.cell(values[i])
+    pdf.ln(5)
+
+
+def _footer(pdf: FPDF, generated: str, location: str = "") -> None:
+    pdf.set_auto_page_break(False)
+    pdf.set_y(-18)
+    pdf.set_font("Rubik", "", 8)
+    pdf.set_text_color(*GREY)
+    pdf.cell(pdf.epw, 4, f"הופק במערכת ועד הבית, {generated}" + (". העותק השמור:" if location else ""),
+             align="C", new_x="LMARGIN", new_y="NEXT")
+    if location:
+        pdf.set_font("Rubik", "", 6.5)
+        pdf.cell(pdf.epw, 4, location, align="C")
+    pdf.set_text_color(0, 0, 0)
+
+
+def statement_pdf(st: dict, settings: dict, generated: str) -> bytes:
+    pdf = _page(A4)
+    _heading(pdf, f"אישור תשלומים — דירה {st['apartment']['id']}",
+             f"{st['name'] or ''}  ·  שנת {st['year']}", settings)
+    rows = [["חודש", "חיוב", "שולם", "אמצעי תשלום", "קבלה", "שולם ע״י"]]
+    for m in st["months"]:
+        if not m["payments"]:
+            rows.append([period_he(m["period"]), money(m["due"]) if m["due"] else "—", "—", "", "", ""])
+            continue
+        for n, p in enumerate(m["payments"]):
+            number = p["cheque_no"] if p["cheque_no"] not in (None, "—") else ""
+            method = f"{METHOD_SHORT[p['method']]} {number}".strip()
+            if p["status"] == "held":
+                receipt, paid = "התקבל, טרם הופקה", "—"
+            else:
+                receipt, paid = (str(p["receipt"]) if p["receipt"] else "ידנית"), money(p["amount"])
+            rows.append([period_he(m["period"]) if n == 0 else "", money(m["due"]) if n == 0 and m["due"] else "",
+                         paid, method, receipt, p["payer"] or ""])
+    rows.append(["סה״כ", money(st["due"]), money(st["paid"]), "", "", ""])
+    _table(pdf, rows, (24, 15, 15, 20, 18, 30), numeric={1, 2}, bold_last=True)
+    pdf.set_font("Rubik", "B", 12)
+    pdf.cell(pdf.epw, 8, f"יתרת הדירה נכון ל{generated}: {_owed(st['balance'])}", align="R",
+             new_x="LMARGIN", new_y="NEXT")
+    if settings.get("treasurer_name"):
+        pdf.set_font("Rubik", "", 10)
+        pdf.cell(pdf.epw, 7, f"גזבר: {settings['treasurer_name']}", align="R")
+    _footer(pdf, generated)
+    return bytes(pdf.output())
+
+
+def summary_pdf(sm: dict, settings: dict, generated: str, location: str) -> bytes:
+    pdf = _page(A4)
+    _heading(pdf, f"סיכום שנתי {sm['year']}", f"הופק {generated}", settings)
+
+    pdf.set_font("Rubik", "B", 12)
+    for label, value in (("הכנסות מדמי ועד", f"₪{money(sm['income'])}"),
+                         ("הוצאות", f"₪{money(sm['spent'])}"),
+                         ("עודף" if sm["net"] >= 0 else "גירעון", f"₪{money(abs(sm['net']))}")):
+        pdf.cell(pdf.epw, 8, f"{label}: {value}", align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    pdf.set_font("Rubik", "B", 13)
+    pdf.cell(pdf.epw, 9, "הכנסות לפי דירה", align="R", new_x="LMARGIN", new_y="NEXT")
+    rows = [["דירה", "שם", "חודשים ששולמו", "חויב", "שולם"]]
+    rows += [[str(r["apt"]), r["name"] or "", str(r["months"]), money(r["due"]), money(r["paid"])] for r in sm["apartments"]]
+    rows.append(["סה״כ", "", "", money(sum(r["due"] for r in sm["apartments"])), money(sm["income"])])
+    _table(pdf, rows, (10, 40, 22, 20, 20), numeric={3, 4}, bold_last=True)
+
+    pdf.set_font("Rubik", "B", 13)
+    pdf.cell(pdf.epw, 9, "הוצאות לפי קטגוריה", align="R", new_x="LMARGIN", new_y="NEXT")
+    if sm["expenses"]:
+        rows = [["קטגוריה", "סכום"]] + [[c["category"], money(c["amount"])] for c in sm["expenses"]]
+        rows.append(["סה״כ", money(sm["spent"])])
+        _table(pdf, rows, (60, 25), numeric={1}, bold_last=True)
+    else:
+        pdf.set_font("Rubik", "", 10)
+        pdf.cell(pdf.epw, 7, "לא נרשמו הוצאות.", align="R", new_x="LMARGIN", new_y="NEXT")
+
+    if sm["accounts"]:
+        pdf.set_font("Rubik", "B", 13)
+        pdf.cell(pdf.epw, 9, f"יתרות לסוף {sm['year']}", align="R", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Rubik", "", 11)
+        bank, treasurer = sm["accounts"]["bank"], sm["accounts"]["treasurer"]
+        pdf.cell(pdf.epw, 7, f"{ACCOUNTS['bank']}: ₪{money(bank)}", align="R", new_x="LMARGIN", new_y="NEXT")
+        owes = f"הוועד חייב לגזבר ₪{money(-treasurer)}" if treasurer < 0 else f"₪{money(treasurer)} בידי הגזבר"
+        pdf.cell(pdf.epw, 7, f"{ACCOUNTS['treasurer']}: {owes}", align="R", new_x="LMARGIN", new_y="NEXT")
+    _footer(pdf, generated, location)
     return bytes(pdf.output())

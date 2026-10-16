@@ -44,9 +44,12 @@
   <nav class="nav" aria-label="ניווט">
     <a href="/grid" {{ 'aria-current=page' if path.startswith(('/grid', '/payments')) }}>{{ icon("home") }}תשלומים</a>
     <a href="/todo" {{ 'aria-current=page' if path.startswith('/todo') }}>{{ icon("inbox") }}לטיפול</a>
-    <a href="/receipts" {{ 'aria-current=page' if path.startswith('/receipts') }}>{{ icon("receipt") }}קבלות</a>
-    <a href="/apartments" {{ 'aria-current=page' if path.startswith('/apartments') }}>{{ icon("building") }}דירות</a>
-    <a href="/settings" {{ 'aria-current=page' if path.startswith('/settings') }}>{{ icon("settings") }}הגדרות</a>
+    <a href="/expenses" {{ 'aria-current=page' if path.startswith('/expenses') }}>{{ icon("cheque") }}הוצאות</a>
+    <a href="/accounts" {{ 'aria-current=page' if path.startswith('/accounts') }}>{{ icon("m-cash") }}קופה</a>
+    <a href="/receipts" class="wide-only" {{ 'aria-current=page' if path.startswith('/receipts') }}>{{ icon("receipt") }}קבלות</a>
+    <a href="/apartments" class="wide-only" {{ 'aria-current=page' if path.startswith('/apartments') }}>{{ icon("building") }}דירות</a>
+    <a href="/settings" class="wide-only" {{ 'aria-current=page' if path.startswith('/settings') }}>{{ icon("settings") }}הגדרות</a>
+    <a href="/more" class="narrow-only" {{ 'aria-current=page' if path.startswith(('/more', '/receipts', '/apartments', '/settings')) }}>{{ icon("settings") }}עוד</a>
   </nav>
   <a class="logout" href="/auth/logout" title="יציאה" aria-label="יציאה">{{ icon("logout") }}</a>
 </header>

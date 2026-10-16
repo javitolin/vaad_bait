@@ -9,6 +9,7 @@ and transfers without a receipt yet (Nov-Dec) become marks, processed on the ל�
 that already has payments.
 """
 import os
+import re
 import sys
 import tempfile
 from datetime import date
@@ -38,6 +39,42 @@ def parse(text: str) -> tuple[str, bool] | None:
     # A cheque handed over in another month was still paid; the sheet tracks it as settled.
     settled = "קיבל קבלה" in text or "בחודש אחר" in text
     return method, settled
+
+
+# Expense rows in the sheet, and the account each was paid from (the gardener in cash, from the treasurer).
+EXPENSE_ROWS = range(20, 27)
+CASH_CATEGORIES = {"גנן"}
+
+
+def amount(value) -> int:
+    """Cells hold numbers or simple formulas like '=230+650'."""
+    if value in (None, ""):
+        return 0
+    if isinstance(value, (int, float)):
+        return round(value * 100)
+    text = str(value).lstrip("=")
+    if not re.fullmatch(r"[\d.+*\s]+", text):
+        raise SystemExit(f"unexpected expense cell: {value!r}")
+    return sum(round(eval_product(term) * 100) for term in text.split("+"))
+
+
+def eval_product(term: str) -> float:
+    result = 1.0
+    for factor in term.split("*"):
+        result *= float(factor)
+    return result
+
+
+def expenses(path: str, through: str):
+    sheet = openpyxl.load_workbook(path).active
+    for r in EXPENSE_ROWS:
+        category = (sheet.cell(r, 1).value or "").strip()
+        if category.startswith("שונות"):
+            category = "שונות"
+        for month in range(1, 13):
+            value = amount(sheet.cell(r, month + 2).value)
+            if value and f"{YEAR}-{month:02d}" <= through:
+                yield category, date(YEAR, month, 1), value
 
 
 def rows(path: str):
@@ -76,12 +113,19 @@ def main(path: str) -> None:
                 conn.execute(
                     "INSERT INTO payments (apt_id, date, amount, method, account, period, cheque_no, cheque_due, status, note) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (apt, date(YEAR, month, 1).isoformat(), 25000, method, ledger.ACCOUNT[method], period,
+                    # Already-paid future months were paid by now, not on the 1st of that month.
+                    (apt, min(date(YEAR, month, 1), date.today()).isoformat(), 25000, method, ledger.ACCOUNT[method], period,
                      UNKNOWN_CHEQUE if method == "cheque" and status == "cleared" else None,
                      date(YEAR, month, 1).isoformat() if status == "held" and method == "cheque" else None, status, note),
                 )
-        ledger.ensure_dues(conn, date.today().strftime("%Y-%m"))
-    print(f"imported 12 apartments, {paid} paid months, {held} marked months -> {bucket or store.path}")
+        through = date.today().strftime("%Y-%m")
+        spent = 0
+        for category, day, value in expenses(path, through):
+            ledger.add_expense(conn, day=day, vendor="", category=category, amount=value,
+                               account="treasurer" if category in CASH_CATEGORIES else "bank", note="יובא מהאקסל")
+            spent += 1
+        ledger.ensure_dues(conn, through)
+    print(f"imported 12 apartments, {paid} paid months, {held} marked months, {spent} expenses -> {bucket or store.path}")
 
 
 if __name__ == "__main__":

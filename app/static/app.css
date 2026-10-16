@@ -105,6 +105,7 @@ small, .muted { color: var(--muted); }
 .topbar .logout:hover { background: var(--surface-2); color: var(--text); }
 
 main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+.narrow-only { display: none !important; }
 
 @media (max-width: 760px) {
   /* backdrop-filter would make the topbar the containing block of the fixed tab bar. */
@@ -117,6 +118,8 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
     border-top: 1px solid var(--border);
   }
   .nav a { flex-direction: column; gap: 2px; padding: 6px 4px; font-size: 0.7rem; flex: 1; text-align: center; }
+  .nav .wide-only { display: none !important; }
+  .nav .narrow-only { display: flex !important; }
   .nav a[aria-current="page"] { background: none; color: var(--brand); }
   .nav a[aria-current="page"] .i { stroke-width: 2.3; }
   main { padding: 18px 16px calc(96px + env(safe-area-inset-bottom)); }
@@ -409,3 +412,12 @@ li.due .date-badge small { color: var(--held); }
 .inline-add input { width: 150px; padding: 8px 11px; }
 .list-end form { margin: 0; }
 .list-end .inline-add input { width: 120px; }
+
+/* ---- saving many things at once ----------------------------------------------- */
+
+.save-bar {
+  position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; justify-content: flex-end; gap: 14px;
+  margin-top: 16px; padding: 14px 0; background: linear-gradient(to bottom, transparent, var(--bg) 35%);
+}
+.save-bar [data-dirty-hint] { color: var(--held); font-weight: 500; }
+@media (max-width: 760px) { .save-bar { bottom: calc(64px + env(safe-area-inset-bottom)); } }

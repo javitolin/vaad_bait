@@ -2,7 +2,8 @@
 // rejects unsigned payloads, so the body hash has to come from the client.
 // Without this every form post returns 403 with a signature mismatch.
 async function bodyHash(body) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
+  const bytes = typeof body === "string" ? new TextEncoder().encode(body) : body;
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -12,16 +13,13 @@ document.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
 
-  const body = new URLSearchParams(new FormData(form)).toString();
   const buttons = form.querySelectorAll("button");
   buttons.forEach((b) => (b.disabled = true));
   try {
+    const { body, type } = await encode(form);
     const response = await fetch(form.action, {
       method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        "x-amz-content-sha256": await bodyHash(body),
-      },
+      headers: { "content-type": type, "x-amz-content-sha256": await bodyHash(body) },
       body,
     });
     if (response.status === 401) {
@@ -40,6 +38,42 @@ document.addEventListener("submit", async (event) => {
   } finally {
     buttons.forEach((b) => (b.disabled = false));
   }
+});
+
+async function encode(form) {
+  if (form.enctype !== "multipart/form-data") {
+    return { body: new URLSearchParams(new FormData(form)).toString(), type: "application/x-www-form-urlencoded" };
+  }
+  const data = new FormData(form);
+  const files = data.getAll("files").filter((f) => f.size);
+  data.delete("files");
+  for (const file of files) data.append("files", await shrink(file));
+  // One Request, so the multipart boundary in the header matches the bytes that get hashed.
+  const request = new Request(form.action, { method: "POST", body: data });
+  return { body: await request.arrayBuffer(), type: request.headers.get("content-type") };
+}
+
+// Phone photos run to several MB and the Lambda behind CloudFront accepts at most 6.
+async function shrink(file) {
+  if (!file.type.startsWith("image/") || file.size < 700 * 1024) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1800 / Math.max(bitmap.width, bitmap.height));
+    const canvas = Object.assign(document.createElement("canvas"), {
+      width: Math.round(bitmap.width * scale),
+      height: Math.round(bitmap.height * scale),
+    });
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
+document.addEventListener("input", (event) => {
+  const hint = event.target.form?.querySelector("[data-dirty-hint]");
+  if (hint) hint.hidden = false;
 });
 
 // On a phone the share sheet sends the PDF itself; WhatsApp takes it from there.

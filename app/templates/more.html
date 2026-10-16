@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon %}
+{% block title %}עוד{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>עוד</h1></div></div>
+<section class="card flush">
+  <ul class="list">
+    <li><a class="rowlink" href="/receipts"><span class="apt-no">{{ icon("receipt", "i-sm") }}</span><div class="list-main"><b>קבלות</b></div></a></li>
+    <li><a class="rowlink" href="/apartments"><span class="apt-no">{{ icon("building", "i-sm") }}</span><div class="list-main"><b>דירות</b><small>פרטים, טלפונים, PDF תשלומים לדירה</small></div></a></li>
+    <li><a class="rowlink" href="/settings"><span class="apt-no">{{ icon("settings", "i-sm") }}</span><div class="list-main"><b>הגדרות</b></div></a></li>
+    <li><a class="rowlink" href="/auth/logout"><span class="apt-no">{{ icon("logout", "i-sm") }}</span><div class="list-main"><b>יציאה</b></div></a></li>
+  </ul>
+</section>
+{% endblock %}
