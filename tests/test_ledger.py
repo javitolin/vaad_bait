@@ -73,6 +73,15 @@ class LedgerTest(unittest.TestCase):
         self.assertIsNotNone(ledger.receipt(self.conn, 1000)["voided_at"])
         self.assertEqual(ledger.grid(self.conn, 2026, "2026-11")[(4, "2026-11")]["status"], "missing")
 
+    def test_reminders_skip_what_is_already_in_hand(self):
+        ledger.ensure_dues(self.conn, "2026-11")
+        ledger.mark(self.conn, 1, "2026-11", "cheque", date(2026, 11, 2))
+        self.pay(apt=2, amount=10000)
+        owed = {d["apartment"]["id"]: d["owed"] for d in ledger.arrears(self.conn)}
+        self.assertNotIn(1, owed)
+        self.assertEqual(owed[2], 15000)
+        self.assertEqual(len(owed), 11)
+
     def test_unmark_only_before_a_receipt(self):
         held = ledger.mark(self.conn, 1, "2026-11", "cash", date(2026, 11, 2))
         ledger.unmark(self.conn, held)
@@ -146,6 +155,21 @@ class AccountsTest(unittest.TestCase):
                                 default_method="cash", opening=0)
         self.assertEqual(ledger.receipt(self.conn, no)["payer"], "הדייר הקודם")
         self.assertEqual(ledger.statement(self.conn, 3, 2026)["name"], "דייר חדש")
+
+    def test_recurring_expense_runs_for_its_months_only(self):
+        rule = ledger.add_recurring(self.conn, category="ביטוח", vendor="", amount=49100, account="bank",
+                                    day=31, start_period="2026-11", months=3)
+        ledger.ensure_recurring(self.conn, date(2027, 6, 1))
+        ledger.ensure_recurring(self.conn, date(2027, 6, 1))  # idempotent
+        dates = [r[0] for r in self.conn.execute("SELECT date FROM expenses WHERE recurring_id = ? ORDER BY date", (rule,))]
+        self.assertEqual(dates, ["2026-11-30", "2026-12-31", "2027-01-31"])
+        # Nothing before its day: an expense never lands in the balances ahead of time.
+        fee = ledger.add_recurring(self.conn, category="עמלות בנק", vendor="", amount=1500, account="bank",
+                                   day=20, start_period="2026-11", months=None)
+        self.assertEqual(len(ledger.missing_recurring(self.conn, date(2026, 11, 19))), 0)
+        ledger.ensure_recurring(self.conn, date(2026, 12, 25))
+        ledger.stop_recurring(self.conn, fee)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM expenses WHERE category = 'עמלות בנק'").fetchone()[0], 2)
 
     def test_only_images_and_pdfs_can_be_attached(self):
         expense = ledger.add_expense(self.conn, day=date(2026, 11, 3), vendor="", category="גנן", amount=100, account="bank")

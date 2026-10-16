@@ -35,6 +35,27 @@
 </section>
 {% endif %}
 
+{% if reminders %}
+<section class="card flush">
+  <div class="card-head"><h2>חובות פתוחים</h2><span class="muted">אחרי מה שכבר התקבל</span></div>
+  <ul class="list" style="margin-top: 8px">
+    {% for d in reminders %}
+    <li>
+      <span class="apt-no">{{ d.apartment.id }}</span>
+      <div class="list-main">
+        <b>{{ d.apartment.occupant or d.apartment.owner or "דירה " ~ d.apartment.id }}</b>
+        <small class="owed-text">חוב ₪{{ d.owed | money }}</small>
+      </div>
+      <div class="list-end">
+        <a class="btn small" href="/apartments/{{ d.apartment.id }}/statement?year={{ year }}" target="_blank">{{ icon("file", "i-sm") }}PDF</a>
+        <a class="btn small wa" href="https://wa.me/{{ d.phone }}?text={{ d.text | urlencode }}" target="_blank" rel="noopener">{{ icon("chat", "i-sm") }}תזכורת</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 {% if held %}
 {% for period, items in held | groupby("period") %}
 <section class="card flush">

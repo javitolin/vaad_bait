@@ -97,6 +97,20 @@ CREATE TABLE IF NOT EXISTS transfers (
   note         TEXT NOT NULL DEFAULT ''
 );
 
+-- A monthly expense that repeats (bank fee, insurance instalments). Each month's
+-- expense row is created when its day arrives; months NULL means until stopped.
+CREATE TABLE IF NOT EXISTS recurring (
+  id           INTEGER PRIMARY KEY,
+  category     TEXT NOT NULL,
+  vendor       TEXT NOT NULL DEFAULT '',
+  amount       INTEGER NOT NULL CHECK (amount > 0),
+  account      TEXT NOT NULL CHECK (account IN ('bank','treasurer')),
+  day          INTEGER NOT NULL CHECK (day BETWEEN 1 AND 31),
+  start_period TEXT NOT NULL CHECK (start_period GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'),
+  months       INTEGER CHECK (months IS NULL OR months > 0),
+  note         TEXT NOT NULL DEFAULT ''
+);
+
 -- Typed in from the paper statement, to compare against what the books say.
 CREATE TABLE IF NOT EXISTS bank_statements (
   date    TEXT PRIMARY KEY,
@@ -129,6 +143,13 @@ MIGRATIONS = [
       SELECT COALESCE(NULLIF(occupant, ''), owner) FROM apartments WHERE apartments.id = payments.apt_id
     );
     """,
+    # 3: expenses created by a recurring rule, at most one per rule and month. Stopping
+    # a rule keeps the expenses it already made.
+    """
+    ALTER TABLE expenses ADD COLUMN recurring_id INTEGER REFERENCES recurring(id) ON DELETE SET NULL;
+    CREATE UNIQUE INDEX expenses_one_per_rule_month ON expenses(recurring_id, substr(date, 1, 7))
+      WHERE recurring_id IS NOT NULL;
+    """,
 ]
 
 APARTMENTS = 12
@@ -140,6 +161,7 @@ DEFAULT_SETTINGS = {
     "treasurer_name": "",
     "wa_receipt": "שלום {name}, מצורפת קבלה מס׳ {receipt_no} על סך ₪{amount} עבור ועד בית {period}. תודה!",
     "wa_statement": "שלום {name}, מצורף אישור על התשלומים לוועד הבית לשנת {year}. תודה!",
+    "wa_reminder": "שלום {name}, תזכורת ידידותית: יתרת דמי ועד הבית לדירה {apt} היא ₪{balance}. תודה!",
     "wa_summary": "שלום לכולם, מצורף הסיכום השנתי של ועד הבית לשנת {year}.",
     "expense_categories": "גנן\nמנקה\nביטוח\nמעלית שירות\nמעלית שנתי\nאגודה לתרבות הדיור\nשונות",
     # Account balances count from this date; the openings are what each held on it.
@@ -153,14 +175,12 @@ def connect(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     # Foreign keys stay off while migrating: rebuilding payments drops the table receipts point at.
-    if conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'payments'").fetchone()[0]:
-        version = conn.execute("PRAGMA user_version").fetchone()[0]
-    else:
-        conn.executescript(SCHEMA)
-        version = BASELINE
+    fresh = not conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'payments'").fetchone()[0]
+    # First, so tables added to SCHEMA later exist before a migration alters them.
+    conn.executescript(SCHEMA)
+    version = BASELINE if fresh else conn.execute("PRAGMA user_version").fetchone()[0]
     for number, script in enumerate(MIGRATIONS[version:], start=version + 1):
         conn.executescript(f"BEGIN; {script} PRAGMA user_version = {number}; COMMIT;")
-    conn.executescript(SCHEMA)
     conn.execute("PRAGMA foreign_keys = ON")
     if conn.execute("SELECT COUNT(*) FROM apartments").fetchone()[0] == 0:
         conn.executemany(

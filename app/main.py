@@ -79,13 +79,15 @@ def receipt_text(settings: dict, r: dict) -> str:
     })
 
 
-def refresh_dues() -> None:
+def refresh() -> None:
+    """Creates this month's dues and any recurring expense whose day has come; writes only when needed."""
     through = today().strftime("%Y-%m")
     with store.read() as conn:
-        missing = ledger.missing_dues(conn, through)
+        missing = ledger.missing_dues(conn, through) or ledger.missing_recurring(conn, today())
     if missing:
         with store.write() as conn:
             ledger.ensure_dues(conn, through)
+            ledger.ensure_recurring(conn, today())
 
 
 # --- auth ---------------------------------------------------------------------
@@ -145,7 +147,7 @@ def home():
 
 @app.get("/grid")
 def grid(request: Request, year: int | None = None, month: str | None = None):
-    refresh_dues()
+    refresh()
     current = today().strftime("%Y-%m")
     shown = ledger.check_period(month) if month else current
     year = year or int(shown[:4])
@@ -201,15 +203,22 @@ def create_payment(
 
 @app.get("/todo")
 def todo(request: Request):
+    refresh()
     day = today().isoformat()
     with store.read() as conn:
         held = ledger.held_payments(conn)
         settings = db.settings(conn)
         issued = [ledger.receipt(conn, r["no"]) for r in ledger.recent_receipts(conn, 50)
                   if r["issued_at"][:10] == day and not r["voided_at"]]
+        debts = ledger.arrears(conn)
     sent = [{"r": r, "text": receipt_text(settings, r), "phone": ledger.wa_phone(r["phone"])} for r in issued]
     due = sum(1 for p in held if p["method"] == "cheque" and p["cheque_no"] and (p["cheque_due"] or "") <= day)
-    return render(request, "todo.html", held=held, due=due, issued=sent)
+    reminders = [{
+        "apartment": d["apartment"], "owed": d["owed"], "phone": ledger.wa_phone(d["apartment"]["phone"]),
+        "text": ledger.fill(settings["wa_reminder"], {"name": ledger.payer_name(d["apartment"]), "apt": d["apartment"]["id"],
+                                                       "balance": ledger.money(d["owed"])}),
+    } for d in debts]
+    return render(request, "todo.html", held=held, due=due, issued=sent, reminders=reminders, year=today().year)
 
 
 @app.post("/marks")
@@ -340,13 +349,41 @@ MAX_UPLOAD = 5 * 1024 * 1024
 
 @app.get("/expenses")
 def expenses_page(request: Request, year: int | None = None):
+    refresh()
     year = year or today().year
     with store.read() as conn:
         rows = ledger.expenses(conn, year)
+        rules = ledger.recurring_rules(conn)
         settings = db.settings(conn)
     categories = [c.strip() for c in settings["expense_categories"].splitlines() if c.strip()]
-    return render(request, "expenses.html", expenses=rows, year=year, categories=categories,
-                  total=sum(e["amount"] for e in rows), today=today().isoformat())
+    return render(request, "expenses.html", expenses=rows, year=year, categories=categories, rules=rules,
+                  total=sum(e["amount"] for e in rows), today=today().isoformat(), period=today().strftime("%Y-%m"))
+
+
+@app.post("/recurring")
+def add_recurring(
+    category: Annotated[str, Form()],
+    amount: Annotated[str, Form()],
+    account: Annotated[str, Form()],
+    day: Annotated[int, Form()],
+    start_period: Annotated[str, Form()],
+    months: Annotated[str, Form()] = "",
+    vendor: Annotated[str, Form()] = "",
+):
+    if months.strip() and not months.strip().isdigit():
+        raise Invalid("מספר חודשים: מספר שלם, או ריק ללא הגבלה")
+    with store.write() as conn:
+        ledger.add_recurring(conn, category=category, vendor=vendor, amount=ledger.parse_money(amount), account=account,
+                             day=day, start_period=start_period, months=int(months) if months.strip() else None)
+        ledger.ensure_recurring(conn, today())
+    return see("/expenses#recurring")
+
+
+@app.post("/recurring/{rule_id}/stop")
+def stop_recurring(rule_id: int):
+    with store.write() as conn:
+        ledger.stop_recurring(conn, rule_id)
+    return see("/expenses#recurring")
 
 
 @app.post("/expenses")
@@ -392,6 +429,7 @@ def delete_expense(expense_id: int, back: Annotated[str, Form()] = "/expenses"):
 
 @app.get("/accounts")
 def accounts(request: Request, saved: bool = False):
+    refresh()
     with store.read() as conn:
         balances = ledger.account_balances(conn)
         recon = ledger.reconciliation(conn)
@@ -452,6 +490,7 @@ def delete_transfer(transfer_id: int):
 
 @app.get("/summary/{year}/pdf")
 def summary_pdf(year: int):
+    refresh()
     with store.read() as conn:
         sm = ledger.year_summary(conn, year)
         settings = db.settings(conn)
@@ -481,6 +520,7 @@ def save_settings(
     start_period: Annotated[str, Form()],
     wa_receipt: Annotated[str, Form()],
     wa_statement: Annotated[str, Form()],
+    wa_reminder: Annotated[str, Form()],
     wa_summary: Annotated[str, Form()],
     expense_categories: Annotated[str, Form()],
     building_address: Annotated[str, Form()] = "",
@@ -494,6 +534,7 @@ def save_settings(
             "start_period": ledger.check_period(start_period),
             "wa_receipt": wa_receipt.strip(),
             "wa_statement": wa_statement.strip(),
+            "wa_reminder": wa_reminder.strip(),
             "wa_summary": wa_summary.strip(),
             "expense_categories": "\n".join(c.strip() for c in expense_categories.splitlines() if c.strip()),
         })

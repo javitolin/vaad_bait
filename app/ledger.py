@@ -102,6 +102,15 @@ def balances(conn: sqlite3.Connection) -> dict[int, int]:
     """).fetchall())
 
 
+def arrears(conn: sqlite3.Connection) -> list[dict]:
+    """Apartments that still owe once what is already in hand (marked, not processed) is counted."""
+    held = dict(conn.execute("SELECT apt_id, SUM(amount) FROM payments WHERE status = 'held' GROUP BY apt_id").fetchall())
+    apartments = {a["id"]: a for a in conn.execute("SELECT * FROM apartments")}
+    return [{"apartment": apartments[apt_id], "owed": balance - held.get(apt_id, 0)}
+            for apt_id, balance in sorted(balances(conn).items())
+            if balance - held.get(apt_id, 0) > 0]
+
+
 def grid(conn: sqlite3.Connection, year: int, current: str) -> dict[tuple[int, str], dict]:
     """Per apartment and month: what is due, what came in, and what is still to process."""
     cells: dict[tuple[int, str], dict] = {}
@@ -398,6 +407,64 @@ def delete_expense(conn: sqlite3.Connection, expense_id: int) -> None:
     # The attached files stay in S3: nothing in the app deletes stored documents.
     conn.execute("DELETE FROM expense_files WHERE expense_id = ?", (expense_id,))
     conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+
+
+def add_recurring(conn: sqlite3.Connection, *, category: str, vendor: str, amount: int, account: str,
+                  day: int, start_period: str, months: int | None, note: str = "") -> int:
+    if account not in ACCOUNTS:
+        raise Invalid(f"חשבון לא מוכר: {account}")
+    if amount <= 0:
+        raise Invalid("הסכום חייב להיות גדול מאפס")
+    if not 1 <= day <= 31:
+        raise Invalid("יום בחודש צריך להיות בין 1 ל-31")
+    if months is not None and months <= 0:
+        raise Invalid("מספר החודשים צריך להיות חיובי, או ריק ללא הגבלה")
+    if not category.strip():
+        raise Invalid("חסרה קטגוריה")
+    return conn.execute(
+        "INSERT INTO recurring (category, vendor, amount, account, day, start_period, months, note) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (category.strip(), vendor.strip(), amount, account, day, check_period(start_period), months, note.strip()),
+    ).lastrowid
+
+
+def recurring_rules(conn: sqlite3.Connection) -> list[dict]:
+    return [dict(r) for r in conn.execute("""
+        SELECT r.*, (SELECT COUNT(*) FROM expenses e WHERE e.recurring_id = r.id) AS made
+        FROM recurring r ORDER BY r.start_period, r.id
+    """)]
+
+
+def stop_recurring(conn: sqlite3.Connection, rule_id: int) -> None:
+    conn.execute("DELETE FROM recurring WHERE id = ?", (rule_id,))
+
+
+def missing_recurring(conn: sqlite3.Connection, today: date) -> list[tuple[sqlite3.Row, date]]:
+    """Each rule's months whose day has come and that have no expense yet."""
+    have = {tuple(row) for row in conn.execute(
+        "SELECT recurring_id, substr(date, 1, 7) FROM expenses WHERE recurring_id IS NOT NULL")}
+    missing = []
+    for rule in conn.execute("SELECT * FROM recurring"):
+        i = 0
+        while rule["months"] is None or i < rule["months"]:
+            period = period_add(rule["start_period"], i)
+            year, month = int(period[:4]), int(period[5:])
+            day = date(year, month, min(rule["day"], calendar.monthrange(year, month)[1]))
+            if day > today:
+                break
+            if (rule["id"], period) not in have:
+                missing.append((rule, day))
+            i += 1
+    return missing
+
+
+def ensure_recurring(conn: sqlite3.Connection, today: date) -> None:
+    for rule, day in missing_recurring(conn, today):
+        conn.execute(
+            "INSERT OR IGNORE INTO expenses (date, vendor, category, amount, account, note, recurring_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (day.isoformat(), rule["vendor"], rule["category"], rule["amount"], rule["account"], rule["note"], rule["id"]),
+        )
 
 
 def add_transfer(conn: sqlite3.Connection, *, day: date, from_account: str, amount: int,

@@ -37,6 +37,52 @@
   <div class="form-actions"><button class="btn primary">{{ icon("plus") }}הוספה</button></div>
 </form>
 
+<section class="card stack" id="recurring">
+  <h2>הוצאות קבועות</h2>
+  <p class="hint">חוזרות כל חודש, למשל עמלת בנק או ביטוח בתשלומים. ההוצאה של כל חודש נרשמת לבד ביום שנקבע.</p>
+  {% if rules %}
+  <ul class="list">
+    {% for r in rules %}
+    <li>
+      <span class="date-badge"><b>{{ r.day }}</b><small>לחודש</small></span>
+      <div class="list-main">
+        <b>{{ r.category }}{% if r.vendor %} · {{ r.vendor }}{% endif %}</b>
+        <small>מ{{ r.start_period | period_he }} ·
+          {% if r.months %}{{ r.made }} מתוך {{ r.months }} חודשים{% else %}ללא הגבלה · נרשמו {{ r.made }}{% endif %}
+          · {{ "מכיסי" if r.account == "treasurer" else "בנק" }}</small>
+      </div>
+      <div class="list-end">
+        <span class="amount num">₪{{ r.amount | money }}</span>
+        <form method="post" action="/recurring/{{ r.id }}/stop" data-confirm="לעצור את ההוצאה הקבועה? מה שכבר נרשם נשאר.">
+          <button class="btn small danger">עצירה</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <details {{ "open" if not rules }}>
+    <summary class="field-label" style="cursor: pointer">הוספת הוצאה קבועה</summary>
+    <form method="post" action="/recurring" class="stack" style="margin-top: 14px">
+      <div class="fields">
+        <label class="field"><span>קטגוריה</span>
+          <select name="category">{% for c in categories %}<option>{{ c }}</option>{% endfor %}<option>עמלות בנק</option></select>
+        </label>
+        <label class="field"><span>סכום חודשי</span><div class="money-input"><input name="amount" inputmode="decimal" required style="font-size: 1.1rem; padding-block: 11px"></div></label>
+        <label class="field"><span>יום בחודש</span><input type="number" name="day" min="1" max="31" value="1" required></label>
+        <label class="field"><span>מחודש</span><input type="month" name="start_period" value="{{ period }}" required></label>
+        <label class="field"><span>כמה חודשים <small>(ריק = ללא הגבלה)</small></span><input name="months" inputmode="numeric" placeholder="למשל 8"></label>
+        <label class="field"><span>ספק <small>(לא חובה)</small></span><input name="vendor"></label>
+      </div>
+      <div class="segmented">
+        <input type="radio" name="account" id="r-bank" value="bank" checked><label for="r-bank">חשבון הבנק</label>
+        <input type="radio" name="account" id="r-tr" value="treasurer"><label for="r-tr">מכיסי (קופת גזבר)</label>
+      </div>
+      <div class="form-actions"><button class="btn primary">{{ icon("plus") }}הוספה</button></div>
+    </form>
+  </details>
+</section>
+
 <section class="card flush">
   {% if expenses %}
   <ul class="list">
@@ -45,7 +91,7 @@
       <span class="date-badge"><b>{{ e.date[8:10] | int }}</b><small>{{ MONTHS_HE[e.date[5:7] | int - 1][:3] }}</small></span>
       <div class="list-main">
         <b>{{ e.category }}{% if e.vendor and e.vendor != e.category %} · {{ e.vendor }}{% endif %}</b>
-        <small>{{ "מכיסי" if e.account == "treasurer" else "בנק" }}{% if e.note %} · {{ e.note }}{% endif %}</small>
+        <small>{{ "מכיסי" if e.account == "treasurer" else "בנק" }}{% if e.recurring_id %} · קבועה{% endif %}{% if e.note %} · {{ e.note }}{% endif %}</small>
       </div>
       <div class="list-end">
         {% for f in e.files %}<a class="btn small" href="/expenses/files/{{ f.id }}" target="_blank" title="{{ f.name }}">{{ icon("file", "i-sm") }}</a>{% endfor %}
