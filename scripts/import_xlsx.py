@@ -10,6 +10,7 @@ that already has payments.
 """
 import os
 import sys
+import tempfile
 from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app"))
@@ -50,7 +51,9 @@ def rows(path: str):
 
 def main(path: str) -> None:
     bucket = os.environ.get("BUCKET")
-    store = Store(os.environ.get("DATA_DIR", ".devdata"), boto3.client("s3") if bucket else None, bucket)
+    # The live database must not be cached over the local playground copy.
+    root = os.environ.get("DATA_DIR") or (tempfile.mkdtemp() if bucket else ".devdata")
+    store = Store(root, boto3.client("s3") if bucket else None, bucket)
     with store.write() as conn:
         if conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0]:
             raise SystemExit("database already has payments; not importing over them")
