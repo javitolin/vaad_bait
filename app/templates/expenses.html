@@ -66,7 +66,7 @@
     <form method="post" action="/recurring" class="stack" style="margin-top: 14px">
       <div class="fields">
         <label class="field"><span>קטגוריה</span>
-          <select name="category">{% for c in categories %}<option>{{ c }}</option>{% endfor %}<option>עמלות בנק</option></select>
+          <select name="category">{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select>
         </label>
         <label class="field"><span>סכום חודשי</span><div class="money-input"><input name="amount" inputmode="decimal" required style="font-size: 1.1rem; padding-block: 11px"></div></label>
         <label class="field"><span>יום בחודש</span><input type="number" name="day" min="1" max="31" value="1" required></label>

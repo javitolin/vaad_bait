@@ -178,7 +178,7 @@ DEFAULT_SETTINGS = {
     "wa_statement": "שלום {name}, מצורף אישור על התשלומים לוועד הבית לשנת {year}. תודה!",
     "wa_reminder": "שלום {name}, תזכורת ידידותית: יתרת דמי ועד הבית לדירה {apt} היא ₪{balance}. תודה!",
     "wa_summary": "שלום לכולם, מצורף הסיכום השנתי של ועד הבית לשנת {year}.",
-    "expense_categories": "גנן\nמנקה\nביטוח\nמעלית שירות\nמעלית שנתי\nאגודה לתרבות הדיור\nשונות",
+    "expense_categories": "גנן\nמנקה\nביטוח\nמעלית שירות\nמעלית שנתי\nאגודה לתרבות הדיור\nעמלות בנק\nשונות",
     # Account balances count from this date; the openings are what each held on it.
     "accounts_start": "",
     "opening_bank": "0",
