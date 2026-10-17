@@ -154,14 +154,15 @@ class AccountsTest(unittest.TestCase):
         summary = ledger.year_summary(self.conn, 2026)
         self.assertEqual((summary["other_income"], summary["net"]), (53600, 53600))
 
-    def test_a_new_tenant_never_appears_on_an_old_receipt(self):
-        self.conn.execute("UPDATE apartments SET occupant = 'הדייר הקודם' WHERE id = 3")
+    def test_receipts_are_issued_to_the_apartment(self):
+        import pdf
         no = ledger.record_payment(self.conn, apt_id=3, period="2026-10", amount=25000, method="cash",
                                    paid_on=date(2026, 10, 1), now=NOW)
         ledger.update_apartment(self.conn, 3, owner="", occupant="דייר חדש", phone="", monthly_fee=25000,
                                 default_method="cash", opening=0)
-        self.assertEqual(ledger.receipt(self.conn, no)["payer"], "הדייר הקודם")
-        self.assertEqual(ledger.statement(self.conn, 3, 2026)["name"], "דייר חדש")
+        r = ledger.receipt(self.conn, no)
+        self.assertEqual((r["apt_id"], r["name"]), (3, "דייר חדש"))
+        self.assertTrue(pdf.receipt_pdf(r, db.settings(self.conn), "s3://b/k").startswith(b"%PDF"))
 
     def test_recurring_expense_runs_for_its_months_only(self):
         rule = ledger.add_recurring(self.conn, category="ביטוח", vendor="", amount=49100, account="bank",

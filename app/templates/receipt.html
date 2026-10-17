@@ -26,8 +26,7 @@
     <hr>
     <dl>
       <dt>תאריך</dt><dd class="num">{{ r.issued_at | date_he }}</dd>
-      <dt>התקבל מאת</dt><dd>{{ r.payer or "—" }}</dd>
-      <dt>דירה</dt><dd>{{ r.apt_id }}</dd>
+      <dt>התקבל מאת</dt><dd>דירה {{ r.apt_id }}</dd>
       <dt>עבור</dt><dd>דמי ועד בית, {{ r.period | period_he }}</dd>
       <dt>אמצעי תשלום</dt>
       <dd>{{ METHOD_HE[r.method] }}{% if r.cheque_no %} מס׳ {{ r.cheque_no }}{% endif %}</dd>
@@ -50,7 +49,7 @@
       <a class="btn block" href="/receipts/{{ r.no }}/pdf" target="_blank">{{ icon("print") }}הדפסה / PDF</a>
       <p class="hint">העותק השמור: <bdi dir="ltr" class="location">{{ location }}</bdi></p>
       {% if phone %}
-        <p class="hint">ישלח ל{{ r.payer or "דירה " ~ r.apt_id }}. בטלפון נפתח חלון שיתוף — בחר וואטסאפ.</p>
+        <p class="hint">ישלח לטלפון של דירה {{ r.apt_id }}{% if r.name %} ({{ r.name }}){% endif %}. בטלפון נפתח חלון שיתוף — בחר וואטסאפ.</p>
       {% else %}
         <p class="hint">אין טלפון לדירה {{ r.apt_id }}. <a href="/apartments#apt-{{ r.apt_id }}">הוספה</a></p>
       {% endif %}

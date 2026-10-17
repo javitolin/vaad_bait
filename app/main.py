@@ -74,7 +74,7 @@ def local(path: str, fallback: str) -> str:
 
 def receipt_text(settings: dict, r: dict) -> str:
     return ledger.fill(settings["wa_receipt"], {
-        "name": r["payer"], "apt": r["apt_id"], "amount": ledger.money(r["amount"]),
+        "name": r["name"], "apt": r["apt_id"], "amount": ledger.money(r["amount"]),
         "period": ledger.period_he(r["period"]), "receipt_no": r["no"],
     })
 
@@ -218,7 +218,7 @@ def todo(request: Request):
     due = sum(1 for p in held if p["method"] == "cheque" and p["cheque_no"] and p["period"] <= day[:7])
     reminders = [{
         "apartment": d["apartment"], "owed": d["owed"], "phone": ledger.wa_phone(d["apartment"]["phone"]),
-        "text": ledger.fill(settings["wa_reminder"], {"name": ledger.payer_name(d["apartment"]), "apt": d["apartment"]["id"],
+        "text": ledger.fill(settings["wa_reminder"], {"name": ledger.apartment_name(d["apartment"]), "apt": d["apartment"]["id"],
                                                        "balance": ledger.money(d["owed"])}),
     } for d in debts]
     return render(request, "todo.html", held=held, due=due, issued=sent, reminders=reminders, year=today().year)
@@ -315,7 +315,7 @@ def apartments(request: Request, saved: bool = False):
         opening = ledger.opening_balances(conn)
         settings = db.settings(conn)
     year = today().year
-    shares = {a["id"]: ledger.fill(settings["wa_statement"], {"name": ledger.payer_name(a), "year": year, "apt": a["id"]})
+    shares = {a["id"]: ledger.fill(settings["wa_statement"], {"name": ledger.apartment_name(a), "year": year, "apt": a["id"]})
               for a in rows}
     return render(request, "apartments.html", apartments=rows, opening=opening, saved=saved, year=year,
                   shares=shares, phones={a["id"]: ledger.wa_phone(a["phone"]) for a in rows})

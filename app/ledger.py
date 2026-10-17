@@ -157,7 +157,7 @@ def grid(conn: sqlite3.Connection, year: int, current: str) -> dict[tuple[int, s
 
 # --- payments and receipts ----------------------------------------------------
 
-def payer_name(apartment: sqlite3.Row) -> str:
+def apartment_name(apartment: sqlite3.Row) -> str:
     return apartment["occupant"] or apartment["owner"]
 
 
@@ -182,11 +182,11 @@ def record_payment(conn: sqlite3.Connection, *, apt_id: int, period: str, amount
     if method == "cheque" and status == "cleared" and not cheque_no:
         raise Invalid("חסר מספר צ׳ק")
     payment_id = conn.execute(
-        "INSERT INTO payments (apt_id, date, amount, method, account, period, cheque_no, status, note, payer) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO payments (apt_id, date, amount, method, account, period, cheque_no, status, note) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (apt_id, paid_on.isoformat(), amount, method, ACCOUNT[method], period,
          cheque_no if method == "cheque" and cheque_no else None,
-         status, note.strip(), payer_name(apartment)),
+         status, note.strip()),
     ).lastrowid
     return issue_receipt(conn, payment_id, now) if status == "cleared" else None
 
@@ -220,7 +220,7 @@ def void_receipt(conn: sqlite3.Connection, no: int, reason: str, now: datetime) 
 def receipt(conn: sqlite3.Connection, no: int) -> dict:
     row = conn.execute("""
         SELECT r.*, p.apt_id, p.date, p.amount, p.method, p.period, p.cheque_no, p.note,
-               COALESCE(NULLIF(p.payer, ''), NULLIF(a.occupant, ''), a.owner) AS payer, a.phone
+               COALESCE(NULLIF(a.occupant, ''), a.owner) AS name, a.phone
         FROM receipts r JOIN payments p ON p.id = r.payment_id JOIN apartments a ON a.id = p.apt_id
         WHERE r.no = ?
     """, (no,)).fetchone()
@@ -232,7 +232,7 @@ def receipt(conn: sqlite3.Connection, no: int) -> dict:
 def recent_receipts(conn: sqlite3.Connection, limit: int = 100) -> list[sqlite3.Row]:
     return conn.execute("""
         SELECT r.no, r.issued_at, r.voided_at, p.apt_id, p.amount, p.method, p.period,
-               COALESCE(NULLIF(p.payer, ''), NULLIF(a.occupant, ''), a.owner) AS payer
+               COALESCE(NULLIF(a.occupant, ''), a.owner) AS name
         FROM receipts r JOIN payments p ON p.id = r.payment_id JOIN apartments a ON a.id = p.apt_id
         ORDER BY r.no DESC LIMIT ?
     """, (limit,)).fetchall()
@@ -253,9 +253,9 @@ def mark(conn: sqlite3.Connection, apt_id: int, period: str, method: str, today:
     ).fetchone():
         raise Invalid(f"דירה {apt_id} כבר מסומנת ל{period_he(period)}")
     return conn.execute(
-        "INSERT INTO payments (apt_id, date, amount, method, account, period, status, payer) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'held', ?)",
-        (apt_id, today.isoformat(), apartment["monthly_fee"], method, ACCOUNT[method], period, payer_name(apartment)),
+        "INSERT INTO payments (apt_id, date, amount, method, account, period, status) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'held')",
+        (apt_id, today.isoformat(), apartment["monthly_fee"], method, ACCOUNT[method], period),
     ).lastrowid
 
 
@@ -292,7 +292,7 @@ def clear_payment(conn: sqlite3.Connection, payment_id: int, today: date, now: d
 
 def held_payments(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return conn.execute("""
-        SELECT p.*, COALESCE(NULLIF(a.occupant, ''), a.owner) AS payer
+        SELECT p.*, COALESCE(NULLIF(a.occupant, ''), a.owner) AS name
         FROM payments p JOIN apartments a ON a.id = p.apt_id
         WHERE p.status = 'held' ORDER BY p.period, p.apt_id
     """).fetchall()
@@ -547,7 +547,7 @@ def statement(conn: sqlite3.Connection, apt_id: int, year: int) -> dict:
                        "paid": sum(p["amount"] for p in payments if p["status"] == "cleared")})
     return {
         "apartment": apartment,
-        "name": payer_name(apartment),
+        "name": apartment_name(apartment),
         "year": year,
         "months": months,
         "due": sum(m["due"] for m in months),
@@ -564,7 +564,7 @@ def year_summary(conn: sqlite3.Connection, year: int) -> dict:
                             "WHERE apt_id = ? AND status = 'cleared' AND period LIKE ?", (a["id"], prefix)).fetchone()
         due = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM charges WHERE apt_id = ? AND kind = 'dues' "
                            "AND period LIKE ?", (a["id"], prefix)).fetchone()[0]
-        rows.append({"apt": a["id"], "name": payer_name(a), "months": paid[1], "paid": paid[0], "due": due})
+        rows.append({"apt": a["id"], "name": apartment_name(a), "months": paid[1], "paid": paid[0], "due": due})
     by_category = conn.execute(
         "SELECT category, SUM(amount) AS amount FROM expenses WHERE date LIKE ? GROUP BY category ORDER BY amount DESC",
         (prefix,)).fetchall()

@@ -57,8 +57,7 @@ def receipt_pdf(r: dict, settings: dict, location: str) -> bytes:
         method += f" מס׳ {r['cheque_no']}"
 
     _line(pdf, "תאריך:", date_he(r["issued_at"]))
-    _line(pdf, "התקבל מאת:", r["payer"] or "—")
-    _line(pdf, "דירה:", str(r["apt_id"]))
+    _line(pdf, "התקבל מאת:", f"דירה {r['apt_id']}")
     _line(pdf, "סכום:", f"₪{money(r['amount'])}")
     _line(pdf, "עבור:", f"דמי ועד בית, {period_he(r['period'])}")
     _line(pdf, "אמצעי תשלום:", method)
@@ -154,10 +153,10 @@ def statement_pdf(st: dict, settings: dict, generated: str) -> bytes:
     pdf = _page(A4)
     _heading(pdf, f"אישור תשלומים — דירה {st['apartment']['id']}",
              f"{st['name'] or ''}  ·  שנת {st['year']}", settings)
-    rows = [["חודש", "חיוב", "שולם", "אמצעי תשלום", "קבלה", "שולם ע״י"]]
+    rows = [["חודש", "חיוב", "שולם", "אמצעי תשלום", "קבלה"]]
     for m in st["months"]:
         if not m["payments"]:
-            rows.append([period_he(m["period"]), money(m["due"]) if m["due"] else "—", "—", "", "", ""])
+            rows.append([period_he(m["period"]), money(m["due"]) if m["due"] else "—", "—", "", ""])
             continue
         for n, p in enumerate(m["payments"]):
             number = p["cheque_no"] if p["cheque_no"] not in (None, "—") else ""
@@ -167,9 +166,9 @@ def statement_pdf(st: dict, settings: dict, generated: str) -> bytes:
             else:
                 receipt, paid = (str(p["receipt"]) if p["receipt"] else "ידנית"), money(p["amount"])
             rows.append([period_he(m["period"]) if n == 0 else "", money(m["due"]) if n == 0 and m["due"] else "",
-                         paid, method, receipt, p["payer"] or ""])
-    rows.append(["סה״כ", money(st["due"]), money(st["paid"]), "", "", ""])
-    _table(pdf, rows, (24, 15, 15, 20, 18, 30), numeric={1, 2}, bold_last=True)
+                         paid, method, receipt])
+    rows.append(["סה״כ", money(st["due"]), money(st["paid"]), "", ""])
+    _table(pdf, rows, (28, 16, 16, 24, 24), numeric={1, 2}, bold_last=True)
     pdf.set_font("Rubik", "B", 12)
     pdf.cell(pdf.epw, 8, f"יתרת הדירה נכון ל{generated}: {_owed(st['balance'])}", align="R",
              new_x="LMARGIN", new_y="NEXT")

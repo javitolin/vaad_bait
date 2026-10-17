@@ -13,7 +13,7 @@
       <a class="rowlink" href="/receipts/{{ r.no }}">
         <span class="apt-no">{{ r.apt_id }}</span>
         <div class="list-main">
-          <b>{{ r.payer or "דירה " ~ r.apt_id }}</b>
+          <b>דירה {{ r.apt_id }}{% if r.name %} · {{ r.name }}{% endif %}</b>
           <small>קבלה {{ r.no }} · {{ r.period | period_he }} · {{ r.issued_at | date_he }}</small>
         </div>
         <div class="list-end">

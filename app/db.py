@@ -165,6 +165,10 @@ MIGRATIONS = [
     """
     ALTER TABLE payments DROP COLUMN cheque_due;
     """,
+    # 5: receipts are issued to the apartment, not to whoever paid.
+    """
+    ALTER TABLE payments DROP COLUMN payer;
+    """,
 ]
 
 APARTMENTS = 12
