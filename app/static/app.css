@@ -250,6 +250,8 @@ input[dir="ltr"] { text-align: right; }
 .stat-label .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand); }
 .stat.owed .dot { background: var(--owed); }
 .stat.held .dot { background: var(--held); }
+.stat.ok .dot { background: var(--paid); }
+.stat.ok .stat-value { color: var(--paid); }
 .stat-value { display: block; font-size: 1.7rem; font-weight: 600; margin-top: 6px; letter-spacing: -0.01em; }
 .stat-sub { color: var(--muted); font-size: 0.82rem; }
 .meter { height: 6px; border-radius: 99px; background: var(--surface-2); margin-top: 10px; overflow: hidden; }

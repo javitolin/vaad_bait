@@ -16,7 +16,7 @@
     <span class="stat-sub">{{ with_receipt }} מתוך {{ apartments | length }} כבר עם קבלה</span>
     <div class="meter"><span style="width: {{ (100 * received / (apartments | length)) | round | int }}%"></span></div>
   </div>
-  <div class="stat owed">
+  <div class="stat {{ 'owed' if missing_apts else 'ok' }}">
     <span class="stat-label"><span class="dot"></span>{{ "טרם סומנו" if shown > current else "חסרים" }} ב{{ shown | period_he }}</span>
     <span class="stat-value num">{{ missing_apts | length }}</span>
     <span class="stat-sub">{% if missing_apts %}דירות {{ missing_apts | join(", ") }}{% else %}כולם מסומנים{% endif %}</span>
