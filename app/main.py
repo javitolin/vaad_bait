@@ -168,7 +168,7 @@ def grid(request: Request, year: int | None = None, month: str | None = None):
         received=sum(1 for c in row if c.get("status") in marked),
         # A future month is not missing anything yet, just not marked.
         missing_apts=[a["id"] for a, c in zip(apartments, row) if c.get("status") not in marked],
-        collected=sum(c.get("paid", 0) for c in row),
+        with_receipt=sum(1 for c in row if c.get("status") == "paid"),
         next_ready=sum(1 for c in upcoming if c.get("status") in marked),
         next_missing=[a["id"] for a, c in zip(apartments, upcoming) if c.get("status") not in marked],
         rows=(len(apartments) + 1) // 2,
