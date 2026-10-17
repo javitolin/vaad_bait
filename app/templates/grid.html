@@ -21,12 +21,12 @@
     <span class="stat-value num">{{ missing_apts | length }}</span>
     <span class="stat-sub">{% if missing_apts %}דירות {{ missing_apts | join(", ") }}{% else %}כולם מסומנים{% endif %}</span>
   </div>
-  <a class="stat held" href="/grid?month={{ next_month }}">
+  <div class="stat held">
     <span class="stat-label"><span class="dot"></span>{{ next_month | period_he }}</span>
     <span class="stat-value num">{{ next_ready }}/{{ apartments | length }}</span>
     <span class="stat-sub">{% if next_missing %}עוד לא סומנו: דירות {{ next_missing | join(", ") }}{% else %}כולם סומנו ✓{% endif %}</span>
     <div class="meter"><span style="width: {{ (100 * next_ready / (apartments | length)) | round | int }}%"></span></div>
-  </a>
+  </div>
 </section>
 
 <section class="card flush">
