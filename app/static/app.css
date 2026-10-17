@@ -423,3 +423,5 @@ li.due .date-badge small { color: var(--held); }
 .save-bar [data-dirty-hint] { color: var(--held); font-weight: 500; }
 @media (max-width: 760px) { .save-bar { bottom: calc(64px + env(safe-area-inset-bottom)); } }
 .owed-text { color: var(--owed) !important; font-weight: 500; }
+a.stat { color: inherit; }
+a.stat:hover { border-color: var(--brand); }

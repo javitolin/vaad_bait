@@ -155,18 +155,23 @@ def grid(request: Request, year: int | None = None, month: str | None = None):
         apartments = conn.execute("SELECT * FROM apartments ORDER BY id").fetchall()
         cells = ledger.grid(conn, year, current)
         shown_cells = ledger.grid(conn, int(shown[:4]), current)
+        next_month = ledger.period_add(shown, 1)
+        next_cells = ledger.grid(conn, int(next_month[:4]), current)
         balances = ledger.balances(conn)
-        todo = len(ledger.held_payments(conn))
     row = [shown_cells.get((a["id"], shown)) or {} for a in apartments]
+    marked = ("paid", "received")
+    upcoming = [next_cells.get((a["id"], next_month)) or {} for a in apartments]
     return render(
         request, "grid.html", year=year, apartments=apartments, cells=cells, shown_cells=shown_cells,
         balances=balances, periods=[f"{year}-{m:02d}" for m in range(1, 13)], current=current, shown=shown,
-        prev_month=ledger.period_add(shown, -1), next_month=ledger.period_add(shown, 1),
-        received=sum(1 for c in row if c.get("status") in ("paid", "received")),
+        prev_month=ledger.period_add(shown, -1), next_month=next_month,
+        received=sum(1 for c in row if c.get("status") in marked),
         # A future month is not missing anything yet, just not marked.
-        missing_apts=[a["id"] for a, c in zip(apartments, row) if c.get("status") not in ("paid", "received")],
+        missing_apts=[a["id"] for a, c in zip(apartments, row) if c.get("status") not in marked],
         collected=sum(c.get("paid", 0) for c in row),
-        todo=todo, rows=(len(apartments) + 1) // 2,
+        next_ready=sum(1 for c in upcoming if c.get("status") in marked),
+        next_missing=[a["id"] for a, c in zip(apartments, upcoming) if c.get("status") not in marked],
+        rows=(len(apartments) + 1) // 2,
     )
 
 
