@@ -461,6 +461,18 @@ def ensure_recurring(conn: sqlite3.Connection, today: date) -> None:
         )
 
 
+def add_income(conn: sqlite3.Connection, *, day: date, description: str, amount: int, account: str,
+               note: str = "") -> None:
+    if account not in ACCOUNTS:
+        raise Invalid(f"חשבון לא מוכר: {account}")
+    if amount <= 0:
+        raise Invalid("הסכום חייב להיות גדול מאפס")
+    if not description.strip():
+        raise Invalid("חסר תיאור")
+    conn.execute("INSERT INTO incomes (date, description, amount, account, note) VALUES (?, ?, ?, ?, ?)",
+                 (day.isoformat(), description.strip(), amount, account, note.strip()))
+
+
 def add_transfer(conn: sqlite3.Connection, *, day: date, from_account: str, amount: int,
                  cheque_no: str = "", note: str = "") -> None:
     if from_account not in ACCOUNTS:
@@ -486,6 +498,9 @@ def account_balances(conn: sqlite3.Connection, as_of: str = "9999-12-31") -> dic
         income = conn.execute(
             "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE account = ? AND status = 'cleared' "
             "AND date BETWEEN ? AND ?", (account, *window)).fetchone()[0]
+        income += conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM incomes WHERE account = ? AND date BETWEEN ? AND ?",
+            (account, *window)).fetchone()[0]
         spent = conn.execute(
             "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE account = ? AND date BETWEEN ? AND ?",
             (account, *window)).fetchone()[0]
@@ -553,7 +568,12 @@ def year_summary(conn: sqlite3.Connection, year: int) -> dict:
     by_category = conn.execute(
         "SELECT category, SUM(amount) AS amount FROM expenses WHERE date LIKE ? GROUP BY category ORDER BY amount DESC",
         (prefix,)).fetchall()
+    other = conn.execute(
+        "SELECT description, SUM(amount) AS amount FROM incomes WHERE date LIKE ? GROUP BY description ORDER BY amount DESC",
+        (prefix,)).fetchall()
     income = sum(r["paid"] for r in rows)
+    other_income = sum(o["amount"] for o in other)
     spent = sum(c["amount"] for c in by_category)
-    return {"year": year, "apartments": rows, "income": income, "expenses": by_category, "spent": spent,
-            "net": income - spent, "accounts": account_balances(conn, f"{year:04d}-12-31")}
+    return {"year": year, "apartments": rows, "income": income, "other": other, "other_income": other_income,
+            "expenses": by_category, "spent": spent, "net": income + other_income - spent,
+            "accounts": account_balances(conn, f"{year:04d}-12-31")}

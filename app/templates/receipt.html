@@ -45,7 +45,8 @@
     <div class="card stack">
       <button type="button" class="btn wa lg block" data-share
               data-pdf="/receipts/{{ r.no }}/pdf" data-name="receipt-{{ r.no }}.pdf"
-              data-text="{{ text }}" data-phone="{{ phone }}">{{ icon("chat") }}שליחה בוואטסאפ</button>
+              data-text="{{ text }}" data-phone="{{ phone }}" {{ "disabled" if not phone }}
+              title="{{ '' if phone else 'אין טלפון לדירה — אפשר להוסיף בעמוד הדירות' }}">{{ icon("chat") }}שליחה בוואטסאפ</button>
       <a class="btn block" href="/receipts/{{ r.no }}/pdf" target="_blank">{{ icon("print") }}הדפסה / PDF</a>
       <p class="hint">העותק השמור: <bdi dir="ltr" class="location">{{ location }}</bdi></p>
       {% if phone %}

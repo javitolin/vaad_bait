@@ -150,7 +150,7 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
 }
 .btn:hover { background: var(--surface-2); color: var(--text); }
 .btn:active { transform: translateY(1px); }
-.btn:disabled { opacity: 0.55; cursor: progress; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; filter: grayscale(1); }
 .btn.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
 .btn.primary:hover { background: var(--brand-strong); border-color: var(--brand-strong); }
 .btn.wa { background: var(--wa); border-color: var(--wa); color: #fff; }

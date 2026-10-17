@@ -13,7 +13,8 @@ document.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
 
-  const buttons = form.querySelectorAll("button");
+  // Only the ones enabled now, so a button greyed out on purpose stays that way.
+  const buttons = [...form.querySelectorAll("button:not(:disabled)")];
   buttons.forEach((b) => (b.disabled = true));
   try {
     const { body, type } = await encode(form);

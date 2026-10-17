@@ -111,6 +111,18 @@ CREATE TABLE IF NOT EXISTS recurring (
   note         TEXT NOT NULL DEFAULT ''
 );
 
+-- Money the ועד gets other than dues. In the treasurer's account it is an offset:
+-- e.g. EV charging electricity the treasurer keeps instead of paying the ועד,
+-- which shrinks what the ועד owes them.
+CREATE TABLE IF NOT EXISTS incomes (
+  id          INTEGER PRIMARY KEY,
+  date        TEXT NOT NULL,
+  description TEXT NOT NULL,
+  amount      INTEGER NOT NULL CHECK (amount > 0),
+  account     TEXT NOT NULL CHECK (account IN ('bank','treasurer')),
+  note        TEXT NOT NULL DEFAULT ''
+);
+
 -- Typed in from the paper statement, to compare against what the books say.
 CREATE TABLE IF NOT EXISTS bank_statements (
   date    TEXT PRIMARY KEY,

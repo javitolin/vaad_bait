@@ -432,13 +432,15 @@ def accounts(request: Request, saved: bool = False):
         balances = ledger.account_balances(conn)
         recon = ledger.reconciliation(conn)
         transfers = conn.execute("SELECT * FROM transfers ORDER BY date DESC, id DESC LIMIT 20").fetchall()
+        incomes = conn.execute("SELECT * FROM incomes ORDER BY date DESC, id DESC LIMIT 20").fetchall()
         statements = conn.execute("SELECT * FROM bank_statements ORDER BY date DESC LIMIT 6").fetchall()
         settings = db.settings(conn)
         years = [r[0] for r in conn.execute(
             "SELECT DISTINCT substr(period, 1, 4) FROM payments UNION SELECT DISTINCT substr(date, 1, 4) FROM expenses "
             "ORDER BY 1 DESC")]
     year = today().year
-    return render(request, "accounts.html", balances=balances, recon=recon, transfers=transfers, statements=statements,
+    return render(request, "accounts.html", balances=balances, recon=recon, transfers=transfers, incomes=incomes,
+                  statements=statements,
                   s=settings, saved=saved, today=today().isoformat(), years=years or [str(year)],
                   summary_text={y: ledger.fill(settings["wa_summary"], {"year": y}) for y in (years or [str(year)])})
 
@@ -477,6 +479,27 @@ def add_transfer(
         ledger.add_transfer(conn, day=parse_date(day, "תאריך"), from_account=from_account,
                             amount=ledger.parse_money(amount), cheque_no=cheque_no, note=note)
     return see("/accounts")
+
+
+@app.post("/incomes")
+def add_income(
+    day: Annotated[str, Form()],
+    description: Annotated[str, Form()],
+    amount: Annotated[str, Form()],
+    account: Annotated[str, Form()],
+    note: Annotated[str, Form()] = "",
+):
+    with store.write() as conn:
+        ledger.add_income(conn, day=parse_date(day, "תאריך"), description=description,
+                          amount=ledger.parse_money(amount), account=account, note=note)
+    return see("/accounts#incomes")
+
+
+@app.post("/incomes/{income_id}/delete")
+def delete_income(income_id: int):
+    with store.write() as conn:
+        conn.execute("DELETE FROM incomes WHERE id = ?", (income_id,))
+    return see("/accounts#incomes")
 
 
 @app.post("/transfers/{transfer_id}/delete")

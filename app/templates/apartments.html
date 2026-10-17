@@ -33,7 +33,8 @@
       <div class="row">
         <a class="btn small" href="/apartments/{{ a.id }}/statement?year={{ year }}" target="_blank">{{ icon("file", "i-sm") }}PDF של תשלומים {{ year }}</a>
         <button type="button" class="btn small wa" data-share data-pdf="/apartments/{{ a.id }}/statement?year={{ year }}"
-                data-name="statement-{{ a.id }}-{{ year }}.pdf" data-text="{{ shares[a.id] }}" data-phone="{{ phones[a.id] }}">{{ icon("chat", "i-sm") }}שליחה</button>
+                data-name="statement-{{ a.id }}-{{ year }}.pdf" data-text="{{ shares[a.id] }}" data-phone="{{ phones[a.id] }}"
+                {{ "disabled" if not phones[a.id] }} title="{{ '' if phones[a.id] else 'אין טלפון — להוסיף למעלה ולשמור' }}">{{ icon("chat", "i-sm") }}שליחה</button>
       </div>
     </section>
   {% endfor %}

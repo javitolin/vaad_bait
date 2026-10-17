@@ -27,7 +27,8 @@
       </div>
       <div class="list-end">
         <button type="button" class="btn wa small" data-share data-pdf="/receipts/{{ x.r.no }}/pdf"
-                data-name="receipt-{{ x.r.no }}.pdf" data-text="{{ x.text }}" data-phone="{{ x.phone }}">{{ icon("chat", "i-sm") }}וואטסאפ</button>
+                data-name="receipt-{{ x.r.no }}.pdf" data-text="{{ x.text }}" data-phone="{{ x.phone }}"
+                {{ "disabled" if not x.phone }} title="{{ '' if x.phone else 'אין טלפון לדירה' }}">{{ icon("chat", "i-sm") }}וואטסאפ</button>
       </div>
     </li>
     {% endfor %}
@@ -48,7 +49,11 @@
       </div>
       <div class="list-end">
         <a class="btn small" href="/apartments/{{ d.apartment.id }}/statement?year={{ year }}" target="_blank">{{ icon("file", "i-sm") }}PDF</a>
+        {% if d.phone %}
         <a class="btn small wa" href="https://wa.me/{{ d.phone }}?text={{ d.text | urlencode }}" target="_blank" rel="noopener">{{ icon("chat", "i-sm") }}תזכורת</a>
+        {% else %}
+        <button type="button" class="btn small wa" disabled title="אין טלפון לדירה">{{ icon("chat", "i-sm") }}תזכורת</button>
+        {% endif %}
       </div>
     </li>
     {% endfor %}

@@ -72,6 +72,40 @@
   </form>
 </div>
 
+<form method="post" action="/incomes" class="card stack" id="incomes" style="margin-top: 16px">
+  <h2>הכנסה אחרת / קיזוז</h2>
+  <p class="hint">כסף שהוועד מקבל שאינו דמי ועד. כשהוא נשאר אצלך (קופת גזבר) זה קיזוז: למשל חשמל טעינת הרכב שאתה לא משלם לוועד מקטין את החוב של הוועד אליך.</p>
+  <div class="fields">
+    <label class="field"><span>תיאור</span><input name="description" value="טעינת רכב חשמלי" list="income-kinds" required>
+      <datalist id="income-kinds"><option value="טעינת רכב חשמלי"><option value="ריבית"><option value="החזר"></datalist>
+    </label>
+    <label class="field"><span>סכום ₪</span><input name="amount" inputmode="decimal" required></label>
+    <label class="field"><span>תאריך</span><input type="date" name="day" value="{{ today }}" required></label>
+    <label class="field"><span>הערה <small>(לא חובה)</small></span><input name="note" placeholder="למשל קריאת מונה"></label>
+  </div>
+  <div class="segmented">
+    <input type="radio" name="account" id="i-tr" value="treasurer" checked><label for="i-tr">קיזוז (קופת גזבר)</label>
+    <input type="radio" name="account" id="i-bank" value="bank"><label for="i-bank">נכנס לבנק</label>
+  </div>
+  <div class="form-actions"><button class="btn primary small">{{ icon("plus", "i-sm") }}הוספה</button></div>
+  {% if incomes %}
+  <ul class="list">
+    {% for i in incomes %}
+    <li>
+      <span class="date-badge"><b>{{ i.date[8:10] | int }}</b><small>{{ MONTHS_HE[i.date[5:7] | int - 1][:3] }} {{ i.date[2:4] }}</small></span>
+      <div class="list-main"><b>{{ i.description }}</b>
+        <small>{{ "קיזוז מהחוב אליך" if i.account == "treasurer" else "בנק" }}{% if i.note %} · {{ i.note }}{% endif %}</small></div>
+      <div class="list-end">
+        <span class="amount num">₪{{ i.amount | money }}</span>
+        <button class="btn small danger" form="delete-income-{{ i.id }}" aria-label="מחיקה">{{ icon("x", "i-sm") }}</button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</form>
+{% for i in incomes %}<form method="post" action="/incomes/{{ i.id }}/delete" id="delete-income-{{ i.id }}" data-confirm="למחוק את ההכנסה?" hidden></form>{% endfor %}
+
 {% if transfers %}
 <section class="card flush" style="margin-top: 16px">
   <div class="card-head"><h2>העברות אחרונות</h2></div>

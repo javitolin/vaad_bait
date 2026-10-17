@@ -113,6 +113,14 @@ def _heading(pdf: FPDF, title: str, subtitle: str, settings: dict) -> None:
     pdf.ln(6)
 
 
+def _section(pdf: FPDF, title: str) -> None:
+    # A heading needs room for at least a few rows under it, or it moves to the next page.
+    if pdf.get_y() > pdf.h - 70:
+        pdf.add_page()
+    pdf.set_font("Rubik", "B", 13)
+    pdf.cell(pdf.epw, 9, title, align="R", new_x="LMARGIN", new_y="NEXT")
+
+
 def _table(pdf: FPDF, rows: list[list[str]], widths: tuple, numeric: set[int] = frozenset(), bold_last: bool = False) -> None:
     # fpdf2 lays a table out left to right; Hebrew reads right to left, so the columns go in reversed.
     order = list(reversed(range(len(widths))))
@@ -177,21 +185,27 @@ def summary_pdf(sm: dict, settings: dict, generated: str, location: str) -> byte
     _heading(pdf, f"סיכום שנתי {sm['year']}", f"הופק {generated}", settings)
 
     pdf.set_font("Rubik", "B", 12)
-    for label, value in (("הכנסות מדמי ועד", f"₪{money(sm['income'])}"),
+    lines = [("הכנסות מדמי ועד", f"₪{money(sm['income'])}")]
+    if sm["other_income"]:
+        lines.append(("הכנסות אחרות", f"₪{money(sm['other_income'])}"))
+    for label, value in (*lines,
                          ("הוצאות", f"₪{money(sm['spent'])}"),
                          ("עודף" if sm["net"] >= 0 else "גירעון", f"₪{money(abs(sm['net']))}")):
         pdf.cell(pdf.epw, 8, f"{label}: {value}", align="R", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
-    pdf.set_font("Rubik", "B", 13)
-    pdf.cell(pdf.epw, 9, "הכנסות לפי דירה", align="R", new_x="LMARGIN", new_y="NEXT")
+    _section(pdf, "הכנסות לפי דירה")
     rows = [["דירה", "שם", "חודשים ששולמו", "חויב", "שולם"]]
     rows += [[str(r["apt"]), r["name"] or "", str(r["months"]), money(r["due"]), money(r["paid"])] for r in sm["apartments"]]
     rows.append(["סה״כ", "", "", money(sum(r["due"] for r in sm["apartments"])), money(sm["income"])])
     _table(pdf, rows, (10, 40, 22, 20, 20), numeric={3, 4}, bold_last=True)
 
-    pdf.set_font("Rubik", "B", 13)
-    pdf.cell(pdf.epw, 9, "הוצאות לפי קטגוריה", align="R", new_x="LMARGIN", new_y="NEXT")
+    if sm["other"]:
+        _section(pdf, "הכנסות אחרות")
+        rows = [["תיאור", "סכום"]] + [[o["description"], money(o["amount"])] for o in sm["other"]]
+        _table(pdf, rows, (60, 25), numeric={1})
+
+    _section(pdf, "הוצאות לפי קטגוריה")
     if sm["expenses"]:
         rows = [["קטגוריה", "סכום"]] + [[c["category"], money(c["amount"])] for c in sm["expenses"]]
         rows.append(["סה״כ", money(sm["spent"])])
@@ -201,8 +215,7 @@ def summary_pdf(sm: dict, settings: dict, generated: str, location: str) -> byte
         pdf.cell(pdf.epw, 7, "לא נרשמו הוצאות.", align="R", new_x="LMARGIN", new_y="NEXT")
 
     if sm["accounts"]:
-        pdf.set_font("Rubik", "B", 13)
-        pdf.cell(pdf.epw, 9, f"יתרות לסוף {sm['year']}", align="R", new_x="LMARGIN", new_y="NEXT")
+        _section(pdf, f"יתרות לסוף {sm['year']}")
         pdf.set_font("Rubik", "", 11)
         bank, treasurer = sm["accounts"]["bank"], sm["accounts"]["treasurer"]
         pdf.cell(pdf.epw, 7, f"{ACCOUNTS['bank']}: ₪{money(bank)}", align="R", new_x="LMARGIN", new_y="NEXT")
