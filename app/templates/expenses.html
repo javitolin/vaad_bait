@@ -29,7 +29,7 @@
     </div>
   </div>
   <div class="fields">
-    <label class="field"><span>קבלה מהספק <small>(צילום או PDF)</small></span>
+    <label class="field"><span>קבלה מהספק <small>(לא חובה · צילום או PDF)</small></span>
       <input type="file" name="files" accept="image/*,application/pdf" multiple>
     </label>
     <label class="field"><span>הערה <small>(לא חובה)</small></span><input name="note"></label>
@@ -91,7 +91,7 @@
       <span class="date-badge"><b>{{ e.date[8:10] | int }}</b><small>{{ MONTHS_HE[e.date[5:7] | int - 1][:3] }}</small></span>
       <div class="list-main">
         <b>{{ e.category }}{% if e.vendor and e.vendor != e.category %} · {{ e.vendor }}{% endif %}</b>
-        <small>{{ "מכיסי" if e.account == "treasurer" else "בנק" }}{% if e.recurring_id %} · קבועה{% endif %}{% if e.note %} · {{ e.note }}{% endif %}</small>
+        <small>{{ "מכיסי" if e.account == "treasurer" else "בנק" }}{% if e.recurring_id %} · קבועה{% endif %}{% if not e.files %} · ללא קבלה מהספק{% endif %}{% if e.note %} · {{ e.note }}{% endif %}</small>
       </div>
       <div class="list-end">
         {% for f in e.files %}<a class="btn small" href="/expenses/files/{{ f.id }}" target="_blank" title="{{ f.name }}">{{ icon("file", "i-sm") }}</a>{% endfor %}
