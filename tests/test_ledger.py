@@ -147,8 +147,8 @@ class AccountsTest(unittest.TestCase):
         ledger.record_bank_statement(self.conn, date(2026, 11, 6), 875900)
         self.assertEqual(ledger.reconciliation(self.conn)["difference"], 0)
 
-    def test_ev_electricity_kept_by_the_treasurer_shrinks_the_debt(self):
-        ledger.add_income(self.conn, day=date(2026, 11, 10), description="טעינת רכב חשמלי", amount=53600,
+    def test_income_kept_by_the_treasurer_shrinks_the_debt(self):
+        ledger.add_income(self.conn, day=date(2026, 11, 10), description="קיזוז", amount=53600,
                           account="treasurer")
         self.assertEqual(ledger.account_balances(self.conn)["treasurer"], -217650 + 53600)
         summary = ledger.year_summary(self.conn, 2026)

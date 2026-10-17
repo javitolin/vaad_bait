@@ -111,9 +111,8 @@ CREATE TABLE IF NOT EXISTS recurring (
   note         TEXT NOT NULL DEFAULT ''
 );
 
--- Money the ועד gets other than dues. In the treasurer's account it is an offset:
--- e.g. EV charging electricity the treasurer keeps instead of paying the ועד,
--- which shrinks what the ועד owes them.
+-- Money the ועד gets other than dues. In the treasurer's account it is an offset
+-- that shrinks what the ועד owes them.
 CREATE TABLE IF NOT EXISTS incomes (
   id          INTEGER PRIMARY KEY,
   date        TEXT NOT NULL,

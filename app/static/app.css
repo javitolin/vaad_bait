@@ -370,6 +370,7 @@ li.due .date-badge small { color: var(--held); }
 /* ---- apartments -------------------------------------------------------------- */
 
 .apt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.apt-grid.three { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-items: start; }
 @media (max-width: 420px) { .apt-grid { grid-template-columns: 1fr; } }
 .apt-card { margin: 0; display: grid; gap: 16px; }
 .apt-card .card-head { margin: 0; justify-content: flex-start; }
