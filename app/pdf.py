@@ -55,8 +55,6 @@ def receipt_pdf(r: dict, settings: dict, location: str) -> bytes:
     method = METHOD_HE[r["method"]]
     if r["method"] == "cheque":
         method += f" מס׳ {r['cheque_no']}"
-        if r.get("cheque_due"):
-            method += f", לפירעון {date_he(r['cheque_due'])}"
 
     _line(pdf, "תאריך:", date_he(r["issued_at"]))
     _line(pdf, "התקבל מאת:", r["payer"] or "—")

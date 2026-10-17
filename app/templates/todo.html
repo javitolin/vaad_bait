@@ -9,7 +9,7 @@
 {% if due %}
 <form method="post" action="/deposit-due" class="banner warn" data-confirm="להפקיד {{ due }} צ׳קים ולהפיק קבלות?">
   <input type="hidden" name="back" value="/todo">
-  {{ icon("clock") }}<span>{{ due }} צ׳קים עם מספר שמועדם הגיע</span>
+  {{ icon("clock") }}<span>{{ due }} צ׳קים עם מספר, לחודש הזה ולפניו</span>
   <button class="btn primary small">הפקדה והפקת קבלות</button>
 </form>
 {% endif %}

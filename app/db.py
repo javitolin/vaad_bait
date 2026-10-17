@@ -150,6 +150,10 @@ MIGRATIONS = [
     CREATE UNIQUE INDEX expenses_one_per_rule_month ON expenses(recurring_id, substr(date, 1, 7))
       WHERE recurring_id IS NOT NULL;
     """,
+    # 4: cheques are tracked by the month they pay for, not a due date.
+    """
+    ALTER TABLE payments DROP COLUMN cheque_due;
+    """,
 ]
 
 APARTMENTS = 12

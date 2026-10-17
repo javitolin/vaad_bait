@@ -111,12 +111,12 @@ def main(path: str) -> None:
                     status, note = "held", "יובא מהאקסל"
                     held += 1
                 conn.execute(
-                    "INSERT INTO payments (apt_id, date, amount, method, account, period, cheque_no, cheque_due, status, note) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO payments (apt_id, date, amount, method, account, period, cheque_no, status, note) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     # Already-paid future months were paid by now, not on the 1st of that month.
                     (apt, min(date(YEAR, month, 1), date.today()).isoformat(), 25000, method, ledger.ACCOUNT[method], period,
                      UNKNOWN_CHEQUE if method == "cheque" and status == "cleared" else None,
-                     date(YEAR, month, 1).isoformat() if status == "held" and method == "cheque" else None, status, note),
+                     status, note),
                 )
         through = date.today().strftime("%Y-%m")
         spent = 0

@@ -30,7 +30,7 @@
       <dt>דירה</dt><dd>{{ r.apt_id }}</dd>
       <dt>עבור</dt><dd>דמי ועד בית, {{ r.period | period_he }}</dd>
       <dt>אמצעי תשלום</dt>
-      <dd>{{ METHOD_HE[r.method] }}{% if r.cheque_no %} מס׳ {{ r.cheque_no }}{% endif %}{% if r.cheque_due %}, לפירעון {{ r.cheque_due | date_he }}{% endif %}</dd>
+      <dd>{{ METHOD_HE[r.method] }}{% if r.cheque_no %} מס׳ {{ r.cheque_no }}{% endif %}</dd>
       {% if r.note %}<dt>הערה</dt><dd>{{ r.note }}</dd>{% endif %}
     </dl>
     <div class="total"><span>סכום</span><b class="num">₪{{ r.amount | money }}</b></div>

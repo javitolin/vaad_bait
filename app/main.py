@@ -187,7 +187,6 @@ def create_payment(
     method: Annotated[str, Form()],
     paid_on: Annotated[str, Form()],
     cheque_no: Annotated[str, Form()] = "",
-    cheque_due: Annotated[str, Form()] = "",
     deposited: Annotated[str, Form()] = "",
     note: Annotated[str, Form()] = "",
 ):
@@ -195,7 +194,6 @@ def create_payment(
         no = ledger.record_payment(
             conn, apt_id=apt_id, period=period, amount=ledger.parse_money(amount), method=method,
             paid_on=parse_date(paid_on, "תאריך"), now=now(), cheque_no=cheque_no,
-            cheque_due=parse_date(cheque_due, "תאריך פירעון") if cheque_due else None,
             deposited=bool(deposited), note=note,
         )
     return see(f"/receipts/{no}?new=1" if no else "/todo")
@@ -212,7 +210,7 @@ def todo(request: Request):
                   if r["issued_at"][:10] == day and not r["voided_at"]]
         debts = ledger.arrears(conn)
     sent = [{"r": r, "text": receipt_text(settings, r), "phone": ledger.wa_phone(r["phone"])} for r in issued]
-    due = sum(1 for p in held if p["method"] == "cheque" and p["cheque_no"] and (p["cheque_due"] or "") <= day)
+    due = sum(1 for p in held if p["method"] == "cheque" and p["cheque_no"] and p["period"] <= day[:7])
     reminders = [{
         "apartment": d["apartment"], "owed": d["owed"], "phone": ledger.wa_phone(d["apartment"]["phone"]),
         "text": ledger.fill(settings["wa_reminder"], {"name": ledger.payer_name(d["apartment"]), "apt": d["apartment"]["id"],
