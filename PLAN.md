@@ -1,5 +1,7 @@
 # ועד בית — System Plan
 
+> The original design, kept for context. Parts changed during the build; `CLAUDE.md` describes the current state.
+
 ## Goal
 Replace the manual sheet and handwritten receipts with a small web app that only the treasurer uses.
 Residents get their receipt PDF on WhatsApp (or printed). A yearly summary is produced on demand and shared manually.
