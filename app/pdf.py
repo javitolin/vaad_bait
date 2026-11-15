@@ -3,7 +3,7 @@ import os
 from fpdf import FPDF
 from fpdf.fonts import FontFace
 
-from ledger import ACCOUNTS, METHOD_HE, METHOD_SHORT, date_he, money, period_he
+from ledger import ACCOUNTS, METHOD_HE, METHOD_SHORT, date_he, money, period_he, periods_he
 
 FONTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "fonts")
 A5 = (148, 210)
@@ -43,7 +43,7 @@ def _fields(r: dict) -> list[tuple[str, str]]:
         ("תאריך:", date_he(r["issued_at"])),
         ("התקבל מאת:", f"דירה {r['apt_id']}"),
         ("סכום:", f"₪{money(r['amount'])}"),
-        ("עבור:", f"דמי ועד בית, {period_he(r['period'])}"),
+        ("עבור:", f"דמי ועד בית, {periods_he(r['period'], r['months'])}"),
         ("אמצעי תשלום:", method),
     ]
     if r.get("note"):
@@ -216,7 +216,8 @@ def statement_pdf(st: dict, settings: dict, generated: str) -> bytes:
     rows = [["חודש", "חיוב", "שולם", "אמצעי תשלום", "קבלה"]]
     for m in st["months"]:
         if not m["payments"]:
-            rows.append([period_he(m["period"]), money(m["due"]) if m["due"] else "—", "—", "", ""])
+            covered = f"כלול ב{period_he(m['covered_by'])}" if m["covered_by"] else ""
+            rows.append([period_he(m["period"]), money(m["due"]) if m["due"] else "—", "" if covered else "—", covered, ""])
             continue
         for n, p in enumerate(m["payments"]):
             number = p["cheque_no"] if p["cheque_no"] not in (None, "—") else ""

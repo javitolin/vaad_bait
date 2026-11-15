@@ -57,6 +57,18 @@ def period_he(period: str) -> str:
     return f"{MONTHS_HE[int(period[5:]) - 1]} {period[:4]}"
 
 
+def covers(period: str, months: int) -> list[str]:
+    return [period_add(period, i) for i in range(months)]
+
+
+def periods_he(period: str, months: int = 1) -> str:
+    last = period_add(period, months - 1)
+    if last == period:
+        return period_he(period)
+    start = MONTHS_HE[int(period[5:]) - 1] if last[:4] == period[:4] else period_he(period)
+    return f"{start}–{period_he(last)}"
+
+
 def date_he(iso: str) -> str:
     return date.fromisoformat(iso[:10]).strftime("%d/%m/%Y")
 
@@ -118,7 +130,7 @@ def grid(conn: sqlite3.Connection, year: int, current: str) -> dict[tuple[int, s
     def cell(apt: int, period: str) -> dict:
         return cells.setdefault((apt, period), {
             "due": 0, "paid": 0, "held_id": None, "method": None, "cheque_no": None,
-            "receipt": None, "bounced": False,
+            "receipt": None, "bounced": False, "covers": "",
         })
 
     prefix = f"{year:04d}-%"
@@ -126,20 +138,27 @@ def grid(conn: sqlite3.Connection, year: int, current: str) -> dict[tuple[int, s
         "SELECT apt_id, period, amount FROM charges WHERE kind = 'dues' AND period LIKE ?", (prefix,)
     ):
         cell(apt, period)["due"] = amount
+    # From a year back: a payment that starts last year can cover months of this one.
     for p in conn.execute("""
-        SELECT p.id, p.apt_id, p.period, p.amount, p.method, p.status, p.cheque_no, r.no AS receipt
+        SELECT p.id, p.apt_id, p.period, p.months, p.amount, p.method, p.status, p.cheque_no, r.no AS receipt
         FROM payments p LEFT JOIN receipts r ON r.payment_id = p.id AND r.voided_at IS NULL
-        WHERE p.period LIKE ? ORDER BY p.id
-    """, (prefix,)):
-        c = cell(p["apt_id"], p["period"])
-        if p["status"] == "cleared":
-            c["paid"] += p["amount"]
-            c["method"] = c["method"] or p["method"]
-            c["receipt"] = c["receipt"] or p["receipt"]
-        elif p["status"] == "held" and c["held_id"] is None:
-            c["held_id"], c["method"], c["cheque_no"] = p["id"], p["method"], p["cheque_no"]
-        elif p["status"] == "bounced":
-            c["bounced"] = True
+        WHERE p.period BETWEEN ? AND ? ORDER BY p.id
+    """, (f"{year - 1:04d}-01", f"{year:04d}-12")):
+        share, extra = divmod(p["amount"], p["months"])
+        for i, period in enumerate(covers(p["period"], p["months"])):
+            if not period.startswith(f"{year:04d}-"):
+                continue
+            c = cell(p["apt_id"], period)
+            if p["months"] > 1:
+                c["covers"] = periods_he(p["period"], p["months"])
+            if p["status"] == "cleared":
+                c["paid"] += share + (extra if i == 0 else 0)
+                c["method"] = c["method"] or p["method"]
+                c["receipt"] = c["receipt"] or p["receipt"]
+            elif p["status"] == "held" and c["held_id"] is None:
+                c["held_id"], c["method"], c["cheque_no"] = p["id"], p["method"], p["cheque_no"]
+            elif p["status"] == "bounced":
+                c["bounced"] = True
 
     for (apt, period), c in cells.items():
         if c["held_id"]:
@@ -219,7 +238,7 @@ def void_receipt(conn: sqlite3.Connection, no: int, reason: str, now: datetime) 
 
 def receipt(conn: sqlite3.Connection, no: int) -> dict:
     row = conn.execute("""
-        SELECT r.*, p.apt_id, p.date, p.amount, p.method, p.period, p.cheque_no, p.note,
+        SELECT r.*, p.apt_id, p.date, p.amount, p.method, p.period, p.months, p.cheque_no, p.note,
                COALESCE(NULLIF(a.occupant, ''), a.owner) AS name, a.phone
         FROM receipts r JOIN payments p ON p.id = r.payment_id JOIN apartments a ON a.id = p.apt_id
         WHERE r.no = ?
@@ -240,22 +259,26 @@ def recent_receipts(conn: sqlite3.Connection, limit: int = 100) -> list[sqlite3.
 
 # --- marks, cheques and processing ---------------------------------------------
 
-def mark(conn: sqlite3.Connection, apt_id: int, period: str, method: str, today: date) -> int:
+def mark(conn: sqlite3.Connection, apt_id: int, period: str, method: str, today: date, months: int = 1) -> int:
     """Received, details later: one tap on the grid. No receipt until it is processed."""
     apartment = _apartment(conn, apt_id)
     check_period(period)
     if method not in ACCOUNT:
         raise Invalid(f"אמצעי תשלום לא מוכר: {method}")
+    if not 1 <= months <= 12:
+        raise Invalid(f"מספר חודשים לא תקין: {months}")
     if apartment["monthly_fee"] <= 0:
         raise Invalid(f"לדירה {apt_id} אין דמי ועד")
-    if conn.execute(
-        "SELECT 1 FROM payments WHERE apt_id = ? AND period = ? AND status IN ('held', 'cleared')", (apt_id, period)
-    ).fetchone():
-        raise Invalid(f"דירה {apt_id} כבר מסומנת ל{period_he(period)}")
+    taken = {p for row in conn.execute(
+        "SELECT period, months FROM payments WHERE apt_id = ? AND status IN ('held', 'cleared')", (apt_id,)
+    ) for p in covers(row["period"], row["months"])}
+    clash = [p for p in covers(period, months) if p in taken]
+    if clash:
+        raise Invalid(f"דירה {apt_id} כבר מסומנת ל{period_he(clash[0])}")
     return conn.execute(
-        "INSERT INTO payments (apt_id, date, amount, method, account, period, status) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'held')",
-        (apt_id, today.isoformat(), apartment["monthly_fee"], method, ACCOUNT[method], period),
+        "INSERT INTO payments (apt_id, date, amount, method, account, period, months, status) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'held')",
+        (apt_id, today.isoformat(), apartment["monthly_fee"] * months, method, ACCOUNT[method], period, months),
     ).lastrowid
 
 
@@ -533,17 +556,21 @@ def reconciliation(conn: sqlite3.Connection) -> dict | None:
 
 def statement(conn: sqlite3.Connection, apt_id: int, year: int) -> dict:
     apartment = _apartment(conn, apt_id)
+    every = conn.execute("""
+        SELECT p.*, r.no AS receipt FROM payments p
+        LEFT JOIN receipts r ON r.payment_id = p.id AND r.voided_at IS NULL
+        WHERE p.apt_id = ? AND p.status IN ('cleared', 'held') ORDER BY p.id
+    """, (apt_id,)).fetchall()
     months = []
     for m in range(1, 13):
         period = f"{year:04d}-{m:02d}"
         due = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM charges WHERE apt_id = ? AND period = ? "
                            "AND kind = 'dues'", (apt_id, period)).fetchone()[0]
-        payments = conn.execute("""
-            SELECT p.*, r.no AS receipt FROM payments p
-            LEFT JOIN receipts r ON r.payment_id = p.id AND r.voided_at IS NULL
-            WHERE p.apt_id = ? AND p.period = ? AND p.status IN ('cleared', 'held') ORDER BY p.id
-        """, (apt_id, period)).fetchall()
-        months.append({"period": period, "due": due, "payments": payments,
+        payments = [p for p in every if p["period"] == period]
+        # A later month of a multi-month payment: listed once, under the month it starts.
+        covered_by = next((p["period"] for p in every
+                           if p["period"] < period and period in covers(p["period"], p["months"])), None)
+        months.append({"period": period, "due": due, "payments": payments, "covered_by": covered_by,
                        "paid": sum(p["amount"] for p in payments if p["status"] == "cleared")})
     return {
         "apartment": apartment,
@@ -560,11 +587,13 @@ def year_summary(conn: sqlite3.Connection, year: int) -> dict:
     prefix = f"{year:04d}-%"
     rows = []
     for a in conn.execute("SELECT * FROM apartments ORDER BY id"):
-        paid = conn.execute("SELECT COALESCE(SUM(amount), 0), COUNT(DISTINCT period) FROM payments "
-                            "WHERE apt_id = ? AND status = 'cleared' AND period LIKE ?", (a["id"], prefix)).fetchone()
+        paid = conn.execute("SELECT period, months, amount FROM payments "
+                            "WHERE apt_id = ? AND status = 'cleared' AND period LIKE ?", (a["id"], prefix)).fetchall()
+        months = {m for p in paid for m in covers(p["period"], p["months"]) if m.startswith(f"{year:04d}-")}
         due = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM charges WHERE apt_id = ? AND kind = 'dues' "
                            "AND period LIKE ?", (a["id"], prefix)).fetchone()[0]
-        rows.append({"apt": a["id"], "name": apartment_name(a), "months": paid[1], "paid": paid[0], "due": due})
+        rows.append({"apt": a["id"], "name": apartment_name(a), "months": len(months),
+                     "paid": sum(p["amount"] for p in paid), "due": due})
     by_category = conn.execute(
         "SELECT category, SUM(amount) AS amount FROM expenses WHERE date LIKE ? GROUP BY category ORDER BY amount DESC",
         (prefix,)).fetchall()

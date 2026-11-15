@@ -111,6 +111,19 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(cells[(3, "2026-11")]["status"], "received")
         self.assertEqual(cells[(4, "2026-12")]["status"], "missing")
 
+    def test_one_cheque_can_pay_two_months(self):
+        ledger.ensure_dues(self.conn, "2026-12")
+        payment = ledger.mark(self.conn, 10, "2026-11", "cheque", date(2026, 11, 1), months=2)
+        with self.assertRaises(Invalid):
+            ledger.mark(self.conn, 10, "2026-12", "cash", date(2026, 11, 1))
+        ledger.set_cheque_no(self.conn, payment, "77")
+        r = ledger.receipt(self.conn, ledger.clear_payment(self.conn, payment, date(2026, 11, 15), NOW))
+        self.assertEqual((r["amount"], ledger.periods_he(r["period"], r["months"])), (50000, "נובמבר–דצמבר 2026"))
+        cells = ledger.grid(self.conn, 2026, "2026-12")
+        self.assertEqual([cells[(10, p)]["status"] for p in ("2026-11", "2026-12")], ["paid", "paid"])
+        self.assertEqual(ledger.balances(self.conn)[10], 0)
+        self.assertEqual(ledger.periods_he("2026-12", 2), "דצמבר 2026–ינואר 2027")
+
     def test_rejects_bad_input(self):
         # A deposited cheque needs its number.
         for kwargs in ({"amount": 0}, {"method": "gold"}, {"period": "2026-13"}, {"apt": 99},

@@ -115,8 +115,17 @@
 
   <section data-pane="empty" class="stack">
     <p class="banner err" data-show-if="bounced">{{ icon("x") }}הצ׳ק הקודם לחודש הזה חזר.</p>
+    <span class="field-label">עבור</span>
+    <div class="segmented">
+      <input type="radio" name="first" id="span-prev" data-first="prev" form="mark">
+      <label for="span-prev" data-f="pair-prev"></label>
+      <input type="radio" name="first" id="span-one" value="" data-first="" form="mark" checked>
+      <label for="span-one" data-f="month"></label>
+      <input type="radio" name="first" id="span-next" data-first="next" form="mark">
+      <label for="span-next" data-f="pair-next"></label>
+    </div>
     <span class="field-label">מה התקבל?</span>
-    <form method="post" action="/marks" class="method-pick">
+    <form id="mark" method="post" action="/marks" class="method-pick">
       <input type="hidden" name="apt_id"><input type="hidden" name="period"><input type="hidden" name="back">
       {% for key, label in METHOD_SHORT.items() %}
         <button name="method" value="{{ key }}" class="method-btn">{{ icon("m-" ~ key) }}<span>{{ label }}</span></button>

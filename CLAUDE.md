@@ -67,7 +67,9 @@ S3 bucket (private, versioned, SSE-S3, Block Public Access on; name in terraform
 - **Form posts go through `fetch`** with an `x-amz-content-sha256` header (app.js
   `bodyHash`), because CloudFront OAC signs requests to the function URL and
   Lambda rejects unsigned bodies. Multipart uploads hash the exact bytes; photos
-  are shrunk in the browser (Lambda payload limit is 6 MB).
+  are shrunk in the browser (Lambda payload limit is 6 MB). The body is built
+  with `new FormData(form, event.submitter)` before buttons are disabled, so a
+  clicked button's `name=value` (the grid's payment method) is sent.
 - A redirect back to the same URL triggers `location.reload()` so the scroll
   position is kept.
 - `refresh()` in main.py creates missing dues charges and due recurring
@@ -83,6 +85,9 @@ Money is integer agorot everywhere. Periods are `YYYY-MM`.
 - `payments`: method `transfer|cheque|cash|bit|offset`; `account` follows the
   method (transfer/cheque -> bank, else -> treasurer, enforced by CHECK);
   status `held` (marked as received, no receipt yet) | `cleared` | `bounced` | `void`.
+  `months` (default 1): one payment covers `period` and the months after it
+  (e.g. a cheque every two months, picked in the grid popup); the grid,
+  statement and yearly summary spread it with `ledger.covers()`.
 - `receipts`: numbers start at 1000, never reused; triggers allow only voiding,
   once, and forbid deletes. Receipts are **issued to the apartment**
   ("התקבל מאת: דירה N"), not to a person.
@@ -103,9 +108,10 @@ Money is integer agorot everywhere. Periods are `YYYY-MM`.
 A new database runs `SCHEMA` then `MIGRATIONS[1:]`; an existing one runs the
 migrations after its `PRAGMA user_version`. **New tables** can be added to
 `SCHEMA` (`CREATE TABLE IF NOT EXISTS`). **Changes to existing tables** go in a
-new `MIGRATIONS` entry (ADD/DROP COLUMN, or a rebuild for CHECK changes). Live
-and local are at version 5. When shipping a migration, run it on live under
-watch (download -> `Store.write()` with no changes -> verify `user_version`).
+new `MIGRATIONS` entry (ADD/DROP COLUMN, or a rebuild for CHECK changes). The
+code is at version 6 (`payments.months`); live is at 5 until that ships. When
+shipping a migration, run it on live under watch (download -> `Store.write()`
+with no changes -> verify `user_version`).
 
 ## Live data vs local data
 

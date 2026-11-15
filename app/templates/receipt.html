@@ -27,7 +27,7 @@
     <dl>
       <dt>תאריך</dt><dd class="num">{{ r.issued_at | date_he }}</dd>
       <dt>התקבל מאת</dt><dd>דירה {{ r.apt_id }}</dd>
-      <dt>עבור</dt><dd>דמי ועד בית, {{ r.period | period_he }}</dd>
+      <dt>עבור</dt><dd>דמי ועד בית, {{ r.period | periods_he(r.months) }}</dd>
       <dt>אמצעי תשלום</dt>
       <dd>{{ METHOD_HE[r.method] }}{% if r.cheque_no %} מס׳ {{ r.cheque_no }}{% endif %}</dd>
       {% if r.note %}<dt>הערה</dt><dd>{{ r.note }}</dd>{% endif %}

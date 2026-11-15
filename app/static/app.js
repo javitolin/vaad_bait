@@ -13,11 +13,14 @@ document.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
 
+  // Taken before the buttons are disabled: the clicked button's value (the grid's
+  // payment method) is only sent while it is enabled.
+  const data = new FormData(form, event.submitter);
   // Only the ones enabled now, so a button greyed out on purpose stays that way.
   const buttons = [...form.querySelectorAll("button:not(:disabled)")];
   buttons.forEach((b) => (b.disabled = true));
   try {
-    const { body, type } = await encode(form);
+    const { body, type } = await encode(form, data);
     const response = await fetch(form.action, {
       method: "POST",
       headers: { "content-type": type, "x-amz-content-sha256": await bodyHash(body) },
@@ -41,11 +44,10 @@ document.addEventListener("submit", async (event) => {
   }
 });
 
-async function encode(form) {
+async function encode(form, data) {
   if (form.enctype !== "multipart/form-data") {
-    return { body: new URLSearchParams(new FormData(form)).toString(), type: "application/x-www-form-urlencoded" };
+    return { body: new URLSearchParams(data).toString(), type: "application/x-www-form-urlencoded" };
   }
-  const data = new FormData(form);
   const files = data.getAll("files").filter((f) => f.size);
   data.delete("files");
   for (const file of files) data.append("files", await shrink(file));
@@ -149,8 +151,16 @@ function openSheet(cell) {
     manual: d.pane === "paid" && !d.receipt,
   };
   const fill = (template) => template.replace(/\{(\w+)\}/g, (_, key) => encodeURIComponent(d[key] ?? ""));
-  const text = { when: `דירה ${d.apt} · ${d.when}`, name: d.name, "method-he": d.methodHe };
+  const text = {
+    when: `דירה ${d.apt} · ${d.covers || d.when}`, name: d.name, "method-he": d.methodHe,
+    month: d.when, "pair-prev": d.pairPrev, "pair-next": d.pairNext,
+  };
   sheet.querySelectorAll("[data-f]").forEach((el) => (el.textContent = text[el.dataset.f] ?? ""));
+  const first = { prev: d.prev, next: d.period };
+  sheet.querySelectorAll("input[name=first]").forEach((radio) => {
+    radio.value = first[radio.dataset.first] ?? "";
+    radio.checked = !radio.dataset.first;
+  });
   sheet.querySelectorAll("[data-pane]").forEach((el) => (el.hidden = el.dataset.pane !== d.pane));
   sheet.querySelectorAll("[data-show-if]").forEach((el) => (el.hidden = !flags[el.dataset.showIf]));
   sheet.querySelectorAll("[data-action]").forEach((form) => (form.action = fill(form.dataset.action)));

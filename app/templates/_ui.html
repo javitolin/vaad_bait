@@ -21,5 +21,6 @@ data-pane="{{ 'received' if c and c.held_id else ('paid' if c and c.status in ('
 data-payment="{{ c.held_id if c and c.held_id else '' }}" data-method="{{ c.method if c and c.method else '' }}"
 data-method-he="{{ METHOD_HE[c.method] if c and c.method else '' }}" data-cheque="{{ c.cheque_no if c and c.cheque_no else '' }}"
 data-receipt="{{ c.receipt if c and c.receipt else '' }}" data-default="{{ a.default_method }}"
-data-bounced="{{ '1' if c and c.bounced else '' }}"
+data-bounced="{{ '1' if c and c.bounced else '' }}" data-covers="{{ c.covers if c else '' }}"
+data-prev="{{ p | period_add(-1) }}" data-pair-prev="{{ p | period_add(-1) | periods_he(2) }}" data-pair-next="{{ p | periods_he(2) }}"
 {%- endmacro %}

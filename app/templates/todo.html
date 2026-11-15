@@ -26,7 +26,7 @@
       <span class="apt-no">{{ x.r.apt_id }}</span>
       <div class="list-main">
         <b>{{ x.r.name or "דירה " ~ x.r.apt_id }}</b>
-        <small><a href="/receipts/{{ x.r.no }}">קבלה {{ x.r.no }}</a> · {{ x.r.period | period_he }} · ₪{{ x.r.amount | money }}</small>
+        <small><a href="/receipts/{{ x.r.no }}">קבלה {{ x.r.no }}</a> · {{ x.r.period | periods_he(x.r.months) }} · ₪{{ x.r.amount | money }}</small>
       </div>
       <div class="list-end">
         <button type="button" class="btn wa small" data-share data-pdf="/receipts/{{ x.r.no }}/pdf"
@@ -74,7 +74,7 @@
       <span class="apt-no">{{ p.apt_id }}</span>
       <div class="list-main">
         <b>{{ p.name or "דירה " ~ p.apt_id }}</b>
-        <small>{{ METHOD_HE[p.method] }}{% if p.cheque_no %} {{ p.cheque_no }}{% endif %} · ₪{{ p.amount | money }}</small>
+        <small>{{ METHOD_HE[p.method] }}{% if p.cheque_no %} {{ p.cheque_no }}{% endif %} · ₪{{ p.amount | money }}{% if p.months > 1 %} · {{ p.period | periods_he(p.months) }}{% endif %}</small>
       </div>
       <div class="list-end">
         {% if p.method == "cheque" and not p.cheque_no %}

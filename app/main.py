@@ -35,7 +35,8 @@ store = Store(os.environ.get("DATA_DIR", "/tmp/vaad"), boto3.client("s3") if BUC
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(HERE, "templates"))
-templates.env.filters.update(money=ledger.money, period_he=ledger.period_he, date_he=ledger.date_he,
+templates.env.filters.update(money=ledger.money, period_he=ledger.period_he, periods_he=ledger.periods_he,
+                             period_add=ledger.period_add, date_he=ledger.date_he,
                              shekels=lambda agorot: f"{round(agorot / 100):,}")
 templates.env.globals.update(METHOD_HE=ledger.METHOD_HE, METHOD_SHORT=ledger.METHOD_SHORT, MONTHS_HE=ledger.MONTHS_HE)
 # Changes with the files, so a browser never keeps running last deploy's JS or CSS.
@@ -75,7 +76,7 @@ def local(path: str, fallback: str) -> str:
 def receipt_text(settings: dict, r: dict) -> str:
     return ledger.fill(settings["wa_receipt"], {
         "name": r["name"], "apt": r["apt_id"], "amount": ledger.money(r["amount"]),
-        "period": ledger.period_he(r["period"]), "receipt_no": r["no"],
+        "period": ledger.periods_he(r["period"], r["months"]), "receipt_no": r["no"],
     })
 
 
@@ -230,9 +231,11 @@ def mark(
     period: Annotated[str, Form()],
     method: Annotated[str, Form()],
     back: Annotated[str, Form()] = "/grid",
+    first: Annotated[str, Form()] = "",
 ):
+    # A two-month payment comes with the first of its two months; otherwise it is the month tapped.
     with store.write() as conn:
-        ledger.mark(conn, apt_id, period, method, today())
+        ledger.mark(conn, apt_id, first or period, method, today(), months=2 if first else 1)
     return see(local(back, "/grid"))
 
 

@@ -169,6 +169,10 @@ MIGRATIONS = [
     """
     ALTER TABLE payments DROP COLUMN payer;
     """,
+    # 6: one payment (e.g. a cheque every two months) covers `period` and the months after it.
+    """
+    ALTER TABLE payments ADD COLUMN months INTEGER NOT NULL DEFAULT 1 CHECK (months BETWEEN 1 AND 12);
+    """,
 ]
 
 APARTMENTS = 12
