@@ -6,7 +6,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import boto3
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -278,6 +278,32 @@ def receipts(request: Request):
     return render(request, "receipts.html", receipts=rows)
 
 
+def stored_receipt(r: dict, settings: dict) -> bytes:
+    # Rendered on first open, then kept: the stored file is what the resident got.
+    body = store.get_file(r["s3_key"])
+    if body is None:
+        body = pdf.receipt_pdf(r, settings, store.location(r["s3_key"]))
+        store.put_file(r["s3_key"], body, "application/pdf")
+    return body
+
+
+# Before /receipts/{no}, which would otherwise take "print" as a receipt number.
+@app.get("/receipts/print")
+def print_receipts(no: Annotated[list[int], Query()] = []):
+    if not no:
+        raise Invalid("לא נבחרו קבלות")
+    with store.read() as conn:
+        chosen = sorted((ledger.receipt(conn, n) for n in set(no)), key=lambda r: (r["apt_id"], r["no"]))
+        settings = db.settings(conn)
+    voided = [str(r["no"]) for r in chosen if r["voided_at"]]
+    if voided:
+        raise Invalid(f"קבלה מבוטלת לא מודפסת: {', '.join(voided)}")
+    for r in chosen:
+        stored_receipt(r, settings)
+    body = pdf.receipts_sheet_pdf([(r, store.location(r["s3_key"])) for r in chosen], settings)
+    return Response(body, media_type="application/pdf", headers={"content-disposition": 'inline; filename="receipts.pdf"'})
+
+
 @app.get("/receipts/{no}")
 def receipt(request: Request, no: int, new: bool = False):
     with store.read() as conn:
@@ -292,11 +318,7 @@ def receipt_pdf(no: int):
     with store.read() as conn:
         r = ledger.receipt(conn, no)
         settings = db.settings(conn)
-    # Rendered on first open, then kept: the stored file is what the resident got.
-    body = store.get_file(r["s3_key"])
-    if body is None:
-        body = pdf.receipt_pdf(r, settings, store.location(r["s3_key"]))
-        store.put_file(r["s3_key"], body, "application/pdf")
+    body = stored_receipt(r, settings)
     return Response(body, media_type="application/pdf",
                     headers={"content-disposition": f'inline; filename="receipt-{no}.pdf"'})
 

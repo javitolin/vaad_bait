@@ -54,7 +54,7 @@ vaad.asadodevculture.com -> CloudFront (ACM cert) -> Lambda function URL (OAC, A
   else     session checked in middleware; DEV_USER bypass only locally (refused on Lambda)
 S3 bucket (private, versioned, SSE-S3, Block Public Access on; name in terraform.tfvars)
   db/vaad.sqlite            the whole database
-  receipts/<year>/<no>.pdf  rendered on first open, then kept; voiding writes <no>-void.pdf
+  receipts/<year>/<no>.pdf  rendered on first open or print, then kept; voiding writes <no>-void.pdf
   expenses/<year>/<id>-<n>.<ext>  vendor receipts (photo/PDF)
   summaries/<year>.pdf      yearly summary, overwritten each time (versions keep history)
 ```
@@ -147,7 +147,7 @@ make add-user EMAIL=...   # Cognito user; prints a temporary password
 ## Status and open ideas
 
 Done: marking months, לטיפול processing (cheque numbers inline, deposit,
-send receipts), receipts, statements, expenses with vendor files, recurring
+send receipts), receipts (plus a cut-out print sheet, 6 per A4), statements, expenses with vendor files, recurring
 expenses, other income/offsets, transfers, bank reconciliation, yearly
 summary, debt reminders, settings, Excel import.
 

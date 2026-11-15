@@ -16,7 +16,10 @@
 
 {% if issued %}
 <section class="card flush">
-  <div class="card-head"><h2>הופקו היום, לשליחה</h2></div>
+  <div class="card-head">
+    <h2>הופקו היום, לשליחה</h2>
+    <a class="btn small" href="/receipts/print?no={{ issued | map(attribute='r.no') | join('&no=') }}" target="_blank">{{ icon("print", "i-sm") }}הדפסת כולן</a>
+  </div>
   <ul class="list" style="margin-top: 8px">
     {% for x in issued %}
     <li>

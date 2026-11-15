@@ -116,11 +116,26 @@ function applyApartment(select) {
   syncToggles();
 }
 
+function countPicks() {
+  const button = document.querySelector("[data-print]");
+  if (!button) return;
+  const n = document.querySelectorAll("input[name=no]:checked").length;
+  button.disabled = !n;
+  button.querySelector("[data-count]").textContent = n ? `(${n})` : "";
+}
+
 document.addEventListener("change", (event) => {
   if (event.target.closest("[data-toggles]")) syncToggles();
   if (event.target.matches("select[data-apartment]")) applyApartment(event.target);
+  if (event.target.matches("[data-check-all]")) {
+    const boxes = event.target.closest("section").querySelectorAll("input[name=no]:not(:disabled)");
+    boxes.forEach((box) => (box.checked = event.target.checked));
+  }
+  countPicks();
 });
 syncToggles();
+// A page restored from the back/forward cache keeps its ticks.
+countPicks();
 
 // One sheet serves every cell: it is filled from the clicked cell's data attributes.
 function openSheet(cell) {

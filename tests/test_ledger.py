@@ -164,6 +164,16 @@ class AccountsTest(unittest.TestCase):
         self.assertEqual((r["apt_id"], r["name"]), (3, "דייר חדש"))
         self.assertTrue(pdf.receipt_pdf(r, db.settings(self.conn), "s3://b/k").startswith(b"%PDF"))
 
+    def test_receipt_sheet_fits_six_to_a_page(self):
+        import re
+
+        import pdf
+        nos = [ledger.record_payment(self.conn, apt_id=apt, period="2026-11", amount=25000, method="cheque",
+                                     cheque_no=str(apt), paid_on=date(2026, 11, 1), now=NOW) for apt in range(1, 8)]
+        items = [(ledger.receipt(self.conn, no), "s3://b/k") for no in nos]
+        body = pdf.receipts_sheet_pdf(items, db.settings(self.conn))
+        self.assertEqual(len(re.findall(rb"/Type /Page\b", body)), 2)
+
     def test_recurring_expense_runs_for_its_months_only(self):
         rule = ledger.add_recurring(self.conn, category="ביטוח", vendor="", amount=49100, account="bank",
                                     day=31, start_period="2026-11", months=3)

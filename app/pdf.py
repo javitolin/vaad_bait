@@ -25,14 +25,30 @@ def _page(size: tuple = A5) -> FPDF:
     return pdf
 
 
-def _line(pdf: FPDF, label: str, value: str) -> None:
-    pdf.set_font("Rubik", "B", 11)
-    label_w = 34
-    pdf.set_x(A5[0] - pdf.r_margin - label_w)
-    pdf.cell(label_w, 9, label, align="R")
-    pdf.set_font("Rubik", "", 11)
-    pdf.set_x(pdf.l_margin)
-    pdf.cell(A5[0] - pdf.l_margin - pdf.r_margin - label_w - 2, 9, value, align="R", new_x="LMARGIN", new_y="NEXT")
+def _line(pdf: FPDF, x: float, width: float, label: str, value: str,
+          size: float = 11, height: float = 9, label_w: float = 34) -> None:
+    pdf.set_font("Rubik", "B", size)
+    pdf.set_x(x + width - label_w)
+    pdf.cell(label_w, height, label, align="R")
+    pdf.set_font("Rubik", "", size)
+    pdf.set_x(x)
+    pdf.cell(width - label_w - 2, height, value, align="R", new_x="LMARGIN", new_y="NEXT")
+
+
+def _fields(r: dict) -> list[tuple[str, str]]:
+    method = METHOD_HE[r["method"]]
+    if r["method"] == "cheque":
+        method += f" מס׳ {r['cheque_no']}"
+    fields = [
+        ("תאריך:", date_he(r["issued_at"])),
+        ("התקבל מאת:", f"דירה {r['apt_id']}"),
+        ("סכום:", f"₪{money(r['amount'])}"),
+        ("עבור:", f"דמי ועד בית, {period_he(r['period'])}"),
+        ("אמצעי תשלום:", method),
+    ]
+    if r.get("note"):
+        fields.append(("הערה:", r["note"]))
+    return fields
 
 
 def receipt_pdf(r: dict, settings: dict, location: str) -> bytes:
@@ -52,17 +68,8 @@ def receipt_pdf(r: dict, settings: dict, location: str) -> bytes:
     pdf.line(pdf.l_margin, pdf.get_y() + 2, A5[0] - pdf.r_margin, pdf.get_y() + 2)
     pdf.ln(8)
 
-    method = METHOD_HE[r["method"]]
-    if r["method"] == "cheque":
-        method += f" מס׳ {r['cheque_no']}"
-
-    _line(pdf, "תאריך:", date_he(r["issued_at"]))
-    _line(pdf, "התקבל מאת:", f"דירה {r['apt_id']}")
-    _line(pdf, "סכום:", f"₪{money(r['amount'])}")
-    _line(pdf, "עבור:", f"דמי ועד בית, {period_he(r['period'])}")
-    _line(pdf, "אמצעי תשלום:", method)
-    if r.get("note"):
-        _line(pdf, "הערה:", r["note"])
+    for label, value in _fields(r):
+        _line(pdf, pdf.l_margin, width, label, value)
 
     if settings.get("treasurer_name"):
         pdf.set_y(-36)
@@ -86,6 +93,59 @@ def receipt_pdf(r: dict, settings: dict, location: str) -> bytes:
     pdf.cell(width, 5, "הופק במערכת ועד הבית. העותק השמור:", align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Rubik", "", 6.5)
     pdf.cell(width, 4, location, align="C")
+    return bytes(pdf.output())
+
+
+SLIP = (A4[0] / 2, A4[1] / 3)
+
+
+def _slip(pdf: FPDF, r: dict, settings: dict, location: str, x: float, y: float) -> None:
+    pad = 7
+    left, width = x + pad, SLIP[0] - 2 * pad
+    pdf.set_xy(left, y + pad)
+    pdf.set_font("Rubik", "B", 12)
+    pdf.cell(width, 6, settings["building_name"], align="R", new_x="LEFT", new_y="NEXT")
+    if settings.get("building_address"):
+        pdf.set_font("Rubik", "", 8.5)
+        pdf.cell(width, 4.5, settings["building_address"], align="R", new_x="LEFT", new_y="NEXT")
+    pdf.set_font("Rubik", "B", 15)
+    pdf.cell(width, 10, f"קבלה מס׳ {r['no']}", align="C", new_x="LEFT", new_y="NEXT")
+    pdf.set_draw_color(180, 180, 180)
+    pdf.line(left, pdf.get_y() + 1, left + width, pdf.get_y() + 1)
+    pdf.set_xy(left, pdf.get_y() + 3)
+    for label, value in _fields(r):
+        _line(pdf, left, width, label, value, size=10, height=6.5, label_w=27)
+
+    if settings.get("treasurer_name"):
+        pdf.set_xy(left, y + SLIP[1] - 20)
+        pdf.set_font("Rubik", "", 9.5)
+        pdf.cell(width, 5, f"גזבר: {settings['treasurer_name']}", align="R")
+    pdf.set_text_color(130, 130, 130)
+    pdf.set_xy(left, y + SLIP[1] - 12)
+    pdf.set_font("Rubik", "", 6.5)
+    pdf.cell(width, 3.5, "הופק במערכת ועד הבית. העותק השמור:", align="C", new_x="LEFT", new_y="NEXT")
+    pdf.set_font("Rubik", "", 5)
+    pdf.cell(width, 3, location, align="C")
+    pdf.set_text_color(0, 0, 0)
+
+
+def receipts_sheet_pdf(items: list[tuple[dict, str]], settings: dict) -> bytes:
+    """Six receipts to an A4 page, to print once and cut along the dashed lines."""
+    pdf = _page(A4)
+    pdf.set_auto_page_break(False)
+    for n, (r, location) in enumerate(items):
+        slot = n % 6
+        if n and not slot:
+            pdf.add_page()
+        if not slot:
+            pdf.set_draw_color(170, 170, 170)
+            pdf.set_dash_pattern(dash=2, gap=2)
+            pdf.line(SLIP[0], 0, SLIP[0], A4[1])
+            pdf.line(0, SLIP[1], A4[0], SLIP[1])
+            pdf.line(0, 2 * SLIP[1], A4[0], 2 * SLIP[1])
+            pdf.set_dash_pattern()
+        # Right column first: the sheet reads right to left like the receipts on it.
+        _slip(pdf, r, settings, location, SLIP[0] * (1 - slot % 2), SLIP[1] * (slot // 2))
     return bytes(pdf.output())
 
 

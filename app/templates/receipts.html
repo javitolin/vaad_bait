@@ -4,28 +4,42 @@
 {% block content %}
 <div class="page-head">
   <div><p class="eyebrow">{{ receipts | length }} אחרונות</p><h1>קבלות</h1></div>
-</div>
-<section class="card flush">
   {% if receipts %}
-  <ul class="list">
-    {% for r in receipts %}
-    <li class="{{ 'void' if r.voided_at }}">
-      <a class="rowlink" href="/receipts/{{ r.no }}">
-        <span class="apt-no">{{ r.apt_id }}</span>
-        <div class="list-main">
-          <b>דירה {{ r.apt_id }}{% if r.name %} · {{ r.name }}{% endif %}</b>
-          <small>קבלה {{ r.no }} · {{ r.period | period_he }} · {{ r.issued_at | date_he }}</small>
-        </div>
-        <div class="list-end">
-          {% if r.voided_at %}<span class="chip void">מבוטלת</span>{% else %}<span class="chip">{{ METHOD_SHORT[r.method] }}</span>{% endif %}
-          <span class="amount num">₪{{ r.amount | money }}</span>
-        </div>
-      </a>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <div class="empty">{{ icon("receipt") }}<p>עדיין אין קבלות. קבלה נוצרת כשרושמים תשלום.</p></div>
+  <button class="btn primary" form="print" data-print disabled>{{ icon("print") }}הדפסה <span data-count></span></button>
   {% endif %}
+</div>
+{% if receipts %}
+<form id="print" method="get" action="/receipts/print" target="_blank">
+  {% for period, items in receipts | groupby("period") | reverse %}
+  <section class="card flush">
+    <div class="card-head">
+      <label class="switch"><input type="checkbox" data-check-all>{{ period | period_he }}</label>
+      <span class="muted">{{ items | length }}</span>
+    </div>
+    <ul class="list picks">
+      {% for r in items %}
+      <li class="{{ 'void' if r.voided_at }}">
+        <input type="checkbox" name="no" value="{{ r.no }}" aria-label="קבלה {{ r.no }}" {{ "disabled" if r.voided_at }}>
+        <a class="rowlink" href="/receipts/{{ r.no }}">
+          <span class="apt-no">{{ r.apt_id }}</span>
+          <div class="list-main">
+            <b>דירה {{ r.apt_id }}{% if r.name %} · {{ r.name }}{% endif %}</b>
+            <small>קבלה {{ r.no }} · {{ r.issued_at | date_he }}</small>
+          </div>
+          <div class="list-end">
+            {% if r.voided_at %}<span class="chip void">מבוטלת</span>{% else %}<span class="chip">{{ METHOD_SHORT[r.method] }}</span>{% endif %}
+            <span class="amount num">₪{{ r.amount | money }}</span>
+          </div>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+</form>
+{% else %}
+<section class="card flush">
+  <div class="empty">{{ icon("receipt") }}<p>עדיין אין קבלות. קבלה נוצרת כשרושמים תשלום.</p></div>
 </section>
+{% endif %}
 {% endblock %}

@@ -225,7 +225,7 @@ input[dir="ltr"] { text-align: right; }
 .subpanel { border: 1px dashed var(--border); border-radius: 14px; padding: 16px; display: grid; gap: 16px; background: var(--surface-2); }
 .subpanel[hidden] { display: none; }
 .switch { display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500; }
-.switch input { width: 20px; height: 20px; accent-color: var(--brand); }
+input[type="checkbox"] { width: 20px; height: 20px; flex: none; accent-color: var(--brand); }
 .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
 
 .placeholders { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -287,6 +287,7 @@ input[dir="ltr"] { text-align: right; }
 @media (max-width: 520px) {
   .list > li { padding: 12px 16px; flex-wrap: wrap; }
   .list-end { width: 100%; justify-content: space-between; padding-inline-start: 48px; }
+  .list.picks .list-end { padding-inline-start: 80px; }
 }
 
 /* the year matrix */
