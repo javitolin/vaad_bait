@@ -79,7 +79,7 @@
             {% set c = cells.get((a.id, p)) %}
             <td class="{{ 'now' if p == current }}">
               <button type="button" class="dot-cell {{ c.status if c and c.status else 'none' }}" {{ cell_data(a, p, c) }}
-                      title="{{ p | period_he }}{% if c and c.method %} · {{ METHOD_HE[c.method] }}{% endif %}">
+                      title="{{ c.covers if c and c.covers else p | period_he }}{% if c and c.method %} · {{ METHOD_HE[c.method] }}{% endif %}">
                 {%- if c and c.method and c.status in ("paid", "received", "partial") %}{{ icon("m-" ~ c.method, "i-sm") }}
                 {%- elif c and c.status == "missing" %}{{ icon("x" if c.bounced else "alert", "i-sm") }}{% endif -%}
               </button>
