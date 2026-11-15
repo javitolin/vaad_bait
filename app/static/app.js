@@ -9,7 +9,9 @@ async function bodyHash(body) {
 
 document.addEventListener("submit", async (event) => {
   const form = event.target;
-  if (form.method.toLowerCase() !== "post") return;
+  // Not form.method: a control named "method" (the grid's payment buttons) shadows it,
+  // this line would throw, and the browser would post natively without the body hash.
+  if (form.getAttribute("method")?.toLowerCase() !== "post") return;
   event.preventDefault();
   if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
 
