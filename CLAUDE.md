@@ -108,10 +108,9 @@ Money is integer agorot everywhere. Periods are `YYYY-MM`.
 A new database runs `SCHEMA` then `MIGRATIONS[1:]`; an existing one runs the
 migrations after its `PRAGMA user_version`. **New tables** can be added to
 `SCHEMA` (`CREATE TABLE IF NOT EXISTS`). **Changes to existing tables** go in a
-new `MIGRATIONS` entry (ADD/DROP COLUMN, or a rebuild for CHECK changes). The
-code is at version 6 (`payments.months`); live is at 5 until that ships. When
-shipping a migration, run it on live under watch (download -> `Store.write()`
-with no changes -> verify `user_version`).
+new `MIGRATIONS` entry (ADD/DROP COLUMN, or a rebuild for CHECK changes). Live
+and local are at version 6. When shipping a migration, run it on live under
+watch (download -> `Store.write()` with no changes -> verify `user_version`).
 
 ## Live data vs local data
 
